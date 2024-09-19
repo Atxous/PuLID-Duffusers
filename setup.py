@@ -4,6 +4,7 @@ setup(
     name='pulid-pipelines',
     version='0.1-beta',
     packages=find_packages(),
+    package_dir={"": "pulid"},
     description='Easily integrate PuLID with Hugging Face pipelines for identity customization in image generation',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',

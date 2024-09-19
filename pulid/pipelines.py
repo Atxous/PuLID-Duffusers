@@ -1,0 +1,18 @@
+from .pipeline_creators import sdxl_pipeline_creator
+from diffusers import (
+    StableDiffusionXLPipeline,
+    StableDiffusionXLImg2ImgPipeline,
+    StableDiffusionXLInpaintPipeline,
+    StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetImg2ImgPipeline,
+    StableDiffusionXLControlNetInpaintPipeline
+)
+
+
+# SDXL Pipelines
+StableDiffusionXLPuLIDPipeline = sdxl_pipeline_creator(StableDiffusionXLPipeline)
+StableDiffusionXLPuLIDImg2ImgPipeline = sdxl_pipeline_creator(StableDiffusionXLImg2ImgPipeline)
+StableDiffusionXLPuLIDInpaintPipeline = sdxl_pipeline_creator(StableDiffusionXLInpaintPipeline)
+StableDiffusionXLPuLIDControlNetPipeline = sdxl_pipeline_creator(StableDiffusionXLControlNetPipeline)
+StableDiffusionXLPuLIDControlNetImg2ImgPipeline = sdxl_pipeline_creator(StableDiffusionXLControlNetImg2ImgPipeline)
+StableDiffusionXLPuLIDControlNetInpaintPipeline = sdxl_pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)

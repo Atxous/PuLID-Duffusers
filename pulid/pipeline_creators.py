@@ -23,10 +23,10 @@ if is_torch2_available():
 else:
     from pulid.attention_processor import AttnProcessor, IDAttnProcessor
 
-from typing import Type, Optional
+from typing import Type
 
 
-def extend_diffusion_pipeline(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
+def sdxl_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
     class PuLIDPipeline(pipeline_constructor):
         def __init__(self, *args, **kwargs):

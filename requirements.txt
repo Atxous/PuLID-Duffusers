@@ -1,1 +1,16 @@
 setuptools
+torch
+torchvision
+diffusers
+transformers
+opencv-python
+httpx
+einops
+ftfy
+facexlib
+insightface
+onnxruntime
+onnxruntime-gpu
+accelerate
+SentencePiece
+safetensors

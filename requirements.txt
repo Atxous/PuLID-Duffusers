@@ -9,8 +9,8 @@ einops
 ftfy
 facexlib
 insightface
-onnxruntime
 onnxruntime-gpu
-accelerate
-SentencePiece
 safetensors
+xformers
+apex
+timm

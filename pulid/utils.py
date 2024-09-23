@@ -11,6 +11,13 @@ from torchvision.utils import make_grid
 from transformers import PretrainedConfig
 
 
+if hasattr(F, "scaled_dot_product_attention"):
+    from .attention_processor import AttnProcessor2_0 as AttnProcessor
+    from .attention_processor import IDAttnProcessor2_0 as IDAttnProcessor
+else:
+    from .attention_processor import AttnProcessor, IDAttnProcessor
+
+
 def seed_everything(seed):
     os.environ["PL_GLOBAL_SEED"] = str(seed)
     random.seed(seed)
@@ -19,9 +26,8 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
 
 
-def is_torch2_available():
-    return hasattr(F, "scaled_dot_product_attention")
 
+from typing import Type
 
 def instantiate_from_config(config):
     if "target" not in config:
@@ -164,3 +170,32 @@ def tensor2img(tensor, rgb2bgr=True, out_type=np.uint8, min_max=(0, 1)):
     if len(result) == 1:
         result = result[0]
     return result
+
+
+def hack_unet_attn_layers(unet):
+        id_adapter_attn_procs = {}
+        for name, _ in unet.attn_processors.items():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+            if cross_attention_dim is not None:
+                id_adapter_attn_procs[name] = IDAttnProcessor(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                ).to(unet.device)
+            else:
+                id_adapter_attn_procs[name] = AttnProcessor()
+        unet.set_attn_processor(id_adapter_attn_procs)
+        return unet
+
+
+def to_gray(self, img):
+        x = 0.299 * img[:, 0:1] + 0.587 * img[:, 1:2] + 0.114 * img[:, 2:3]
+        x = x.repeat(1, 3, 1, 1)
+        return x

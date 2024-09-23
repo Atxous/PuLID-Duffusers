@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class IDEncoder(nn.Module):
     def __init__(self, width=1280, context_dim=2048, num_token=5):
         super().__init__()

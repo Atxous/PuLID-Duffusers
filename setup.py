@@ -1,10 +1,17 @@
 from setuptools import setup, find_packages
 
+import os
+
+def get_requirements(filename='requirements.txt'):
+    here = os.path.dirname(os.path.realpath(__file__))
+    with open(os.path.join(here, filename), 'r') as f:
+        requires = [line.replace('\n', '') for line in f.readlines()]
+    return requires
+
 setup(
-    name='pulid-pipelines',
+    name='pulid_pipelines',
     version='0.1-beta',
     packages=find_packages(),
-    package_dir={"": "pulid"},
     description='Easily integrate PuLID with Hugging Face pipelines for identity customization in image generation',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
@@ -19,4 +26,5 @@ setup(
         'Programming Language :: Python :: 3.9',
     ],
     python_requires='>=3.6',
+    install_requires=get_requirements(),
 )

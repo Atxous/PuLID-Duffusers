@@ -14,10 +14,12 @@ from torchvision.transforms.functional import normalize, resize
 
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .utils import img2tensor, tensor2img
+from .utils import img2tensor, tensor2img, hack_unet_attn_layers, to_gray
 
+from diffusers import DiffusionPipeline
+from typing import Optional
 
-class PuLIDProcessor():
+class PuLIDFeaturesExtractor():
     def __init__(self, device: str = "cpu"):
         self.device = device
         # preprocessors
@@ -106,7 +108,7 @@ class PuLIDProcessor():
         bg = sum(parsing_out == i for i in bg_label).bool()
         white_image = torch.ones_like(input)
         # only keep the face features
-        face_features_image = torch.where(bg, white_image, self.to_gray(input))
+        face_features_image = torch.where(bg, white_image, to_gray(input))
         self.debug_img_list.append(tensor2img(face_features_image, rgb2bgr=False))
         # transform img before sending to eva-clip-vit
         face_features_image = resize(face_features_image, self.clip_vision_model.image_size, InterpolationMode.BICUBIC)
@@ -122,7 +124,7 @@ class PuLIDProcessor():
 
 
 
-class PuLIDAdapter():
+class PuLIDEncoder():
     def __init__(self, device: str = "cpu"):
         self.device = device
         # ID encoders
@@ -149,8 +151,27 @@ class PuLIDAdapter():
         id_vit_hidden_uncond = []
         for layer_idx in range(0, len(clip_embeds)):
             id_vit_hidden_uncond.append(torch.zeros_like(clip_embeds[layer_idx]))
-        id_embedding = self.id_encoder(face_info_embeds, clip_embeds)
-        uncond_id_embedding = self.id_endoer(id_uncond, id_vit_hidden_uncond)
+        id_embedding = self.id_eadapter(face_info_embeds, clip_embeds)
+        uncond_id_embedding = self.id_adapter(id_uncond, id_vit_hidden_uncond)
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
     
+
+class PuLIDAdapter():
+    def __init__(self, pipe: DiffusionPipeline, pulid_encoder: Optional[PuLIDEncoder] = None):
+        self.pipe = pipe
+        self.pipe.unet = hack_unet_attn_layers(pipe.unet)
+        if pulid_encoder == None: self.pulid_adapter = PuLIDAdapter()
+        self.pulid_features_extractor = PuLIDFeaturesExtractor()
+
+    def __call__(self, *args, id_image = None, id_scale: float = 1, **kwargs):
+        pulid_cross_attention = {}
+        cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
+
+        if id_image:
+            id_features, id_clip_embeds = self.pulid_features_extractor(id_image)
+            id_embedding = self.pulid_encoder(id_features, id_clip_embeds)
+            pulid_cross_attention = { 'id_embedding': id_embedding, 'id_scale': id_scale }
+
+
+        return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention, **cross_attention_kwargs}, **kwargs ) 

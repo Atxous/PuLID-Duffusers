@@ -7,7 +7,7 @@ import cv2
 import insightface
 from facexlib.parsing import init_parsing_model
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
@@ -49,12 +49,12 @@ class PuLIDFeaturesExtractor():
         self.eva_transform_std = eva_transform_std
 
         # antelopev2
-        hf_hub_download('DIAMONIK7777/antelopev2', "glintr100.onnx", local_dir='models')
+        snapshot_download('DIAMONIK7777/antelopev2', local_dir='models/antelopev2')
         self.app = FaceAnalysis(
             name='antelopev2', root='.', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
         )
         self.app.prepare(ctx_id=0, det_size=(640, 640))
-        self.handler_ante = insightface.model_zoo.get_model('models/glintr100.onnx')
+        self.handler_ante = insightface.model_zoo.get_model('models/antelopev2/glintr100.onnx')
         self.handler_ante.prepare(ctx_id=0)
         gc.collect()
         torch.cuda.empty_cache()

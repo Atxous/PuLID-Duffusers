@@ -9,6 +9,7 @@ einops
 ftfy
 facexlib
 insightface
+onnxruntime
 onnxruntime-gpu
 safetensors
 xformers

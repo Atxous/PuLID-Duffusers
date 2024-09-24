@@ -161,7 +161,7 @@ class PuLIDAdapter():
     def __init__(self, pipe: DiffusionPipeline, pulid_encoder: Optional[PuLIDEncoder] = None):
         self.pipe = pipe
         self.pipe.unet = hack_unet_attn_layers(pipe.unet)
-        if pulid_encoder == None: self.pulid_adapter = PuLIDAdapter()
+        self.pulid_encoder = PuLIDEncoder() if pulid_encoder == None else pulid_encoder
         self.pulid_features_extractor = PuLIDFeaturesExtractor()
 
     def __call__(self, *args, id_image = None, id_scale: float = 1, **kwargs):

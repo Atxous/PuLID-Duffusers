@@ -1,4 +1,4 @@
-from .utils import hack_unet_attn_layers
+"""from .utils import hack_unet_attn_layers
 from diffusers import (
     DiffusionPipeline,
     StableDiffusionXLPipeline,
@@ -42,3 +42,5 @@ __all__ = [
     "StableDiffusionXLPuLIDControlNetImg2ImgPipeline",
     "StableDiffusionXLPuLIDControlNetInpaintPipeline"
 ]
+
+"""

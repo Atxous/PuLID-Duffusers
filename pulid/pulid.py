@@ -1,5 +1,6 @@
 from .encoders import IDEncoder
 import torch
+import torch.nn as nn
 from huggingface_hub import hf_hub_download
 
 import gc
@@ -11,13 +12,22 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
+import torch.nn.functional as F
 
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .utils import img2tensor, tensor2img, hack_unet_attn_layers, to_gray
+from .utils import img2tensor, tensor2img, to_gray
 
 from diffusers import DiffusionPipeline
 from typing import Optional
+
+
+if hasattr(F, "scaled_dot_product_attention"):
+    from .attention_processor import AttnProcessor2_0 as AttnProcessor
+    from .attention_processor import IDAttnProcessor2_0 as IDAttnProcessor
+else:
+    from .attention_processor import AttnProcessor, IDAttnProcessor
+
 
 class PuLIDFeaturesExtractor():
     def __init__(self, device: str = "cpu"):
@@ -124,14 +134,19 @@ class PuLIDFeaturesExtractor():
 
 
 
-class PuLIDEncoder():
-    def __init__(self, device: str = "cpu"):
+    
+
+class PuLIDAdapter:
+    def __init__(self, pipe: DiffusionPipeline, device: str = "cpu"):
         self.device = device
         # ID encoders
         self.id_adapter = IDEncoder().to(self.device)
+        self.pipe = pipe
+        self.hack_unet_attn_layers(pipe.unet)
+        self.features_extractor = PuLIDFeaturesExtractor()
+        self.load_weights()
 
     def load_weights(self):
-    
         hf_hub_download('guozinan/PuLID', 'pulid_v1.bin', local_dir='models')
         ckpt_path = 'models/pulid_v1.bin'
         state_dict = torch.load(ckpt_path, map_location='cpu')
@@ -145,8 +160,30 @@ class PuLIDEncoder():
             print(f'loading from {module}')
             getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
 
+    def hack_unet_attn_layers(self, unet):
+        id_adapter_attn_procs = {}
+        for name, _ in unet.attn_processors.items():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+            if cross_attention_dim is not None:
+                id_adapter_attn_procs[name] = IDAttnProcessor(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                ).to(unet.device)
+            else:
+                id_adapter_attn_procs[name] = AttnProcessor()
+        unet.set_attn_processor(id_adapter_attn_procs)
+        self.id_adapter_attn_layers = nn.ModuleList(unet.attn_processors.values())
+
     
-    def __call__(self, face_info_embeds, clip_embeds):
+    def get_id_embedding(self, face_info_embeds, clip_embeds):
         id_uncond = torch.zeros_like(face_info_embeds)
         id_vit_hidden_uncond = []
         for layer_idx in range(0, len(clip_embeds)):
@@ -155,23 +192,14 @@ class PuLIDEncoder():
         uncond_id_embedding = self.id_adapter(id_uncond, id_vit_hidden_uncond)
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
-    
-
-class PuLIDAdapter():
-    def __init__(self, pipe: DiffusionPipeline, pulid_encoder: Optional[PuLIDEncoder] = None):
-        self.pipe = pipe
-        self.pipe.unet = hack_unet_attn_layers(pipe.unet)
-        self.pulid_encoder = PuLIDEncoder() if pulid_encoder == None else pulid_encoder
-        self.pulid_features_extractor = PuLIDFeaturesExtractor()
 
     def __call__(self, *args, id_image = None, id_scale: float = 1, **kwargs):
         pulid_cross_attention = {}
         cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
 
         if id_image:
-            id_features, id_clip_embeds = self.pulid_features_extractor(id_image)
-            id_embedding = self.pulid_encoder(id_features, id_clip_embeds)
+            id_features, id_clip_embeds = self.features_extractor(id_image)
+            id_embedding = self.get_id_embedding(id_features, id_clip_embeds)
             pulid_cross_attention = { 'id_embedding': id_embedding, 'id_scale': id_scale }
-
 
         return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention, **cross_attention_kwargs}, **kwargs ) 

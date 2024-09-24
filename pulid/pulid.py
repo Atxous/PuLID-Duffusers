@@ -21,6 +21,7 @@ from .utils import img2tensor, tensor2img, to_gray
 from diffusers import DiffusionPipeline
 from typing import Optional
 
+from . import attention_processor as attention
 
 if hasattr(F, "scaled_dot_product_attention"):
     from .attention_processor import AttnProcessor2_0 as AttnProcessor
@@ -193,9 +194,20 @@ class PuLIDAdapter:
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
-    def __call__(self, *args, id_image = None, id_scale: float = 1, **kwargs):
+    def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):
         pulid_cross_attention = {}
         cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
+
+        if pulid_mode == 'fidelity':
+            attention.NUM_ZERO = 8
+            attention.ORTHO = False
+            attention.ORTHO_v2 = True
+        elif pulid_mode == 'extremely style':
+            attention.NUM_ZERO = 16
+            attention.ORTHO = True
+            attention.ORTHO_v2 = False
+        else:
+            raise ValueError
 
         if id_image is not None or id_image.any():
             id_features, id_clip_embeds = self.features_extractor(id_image)

@@ -195,7 +195,7 @@ def hack_unet_attn_layers(unet):
         return unet
 
 
-def to_gray(self, img):
+def to_gray(img):
         x = 0.299 * img[:, 0:1] + 0.587 * img[:, 1:2] + 0.114 * img[:, 2:3]
         x = x.repeat(1, 3, 1, 1)
         return x

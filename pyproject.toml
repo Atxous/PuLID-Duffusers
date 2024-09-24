@@ -1,0 +1,45 @@
+[project]
+name='pulid_pipelines'
+version='0.1-beta'
+description='Easily integrate PuLID with Hugging Face pipelines for identity customization in image generation'
+readme = "README.md"
+authors=[
+  { name="SmokDev" },
+]
+classifiers=[
+    'Development Status :: 0.1 - Beta',
+    'Intended Audience :: Developers',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+]
+license = {file = "LICENSE"}
+dependencies = [
+    "torch",
+    "torchvision",
+    "diffusers",
+    "transformers",
+    "opencv-python",
+    "httpx",
+    "einops",
+    "ftfy",
+    "facexlib",
+    "insightface",
+    "onnxruntime",
+    "onnxruntime-gpu",
+    "safetensors",
+    "xformers",
+    "apex",
+    "timm"
+]
+
+[project.urls]
+Homepage = "https://github.com/ToTheBeginning/PuLID"
+Documentation = "https://github.com/SmokDev/PuLID-Pipelines.git"
+Repository = "https://github.com/SmokDev/PuLID-Pipelines.git"
+
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

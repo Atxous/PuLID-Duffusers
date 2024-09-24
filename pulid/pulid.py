@@ -143,7 +143,7 @@ class PuLIDAdapter:
         self.id_adapter = IDEncoder().to(self.device)
         self.pipe = pipe
         self.hack_unet_attn_layers(pipe.unet)
-        self.features_extractor = PuLIDFeaturesExtractor()
+        self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
         self.load_weights()
 
     def load_weights(self):

@@ -137,17 +137,14 @@ class PuLIDFeaturesExtractor():
 
     
 
-class PuLIDAdapter:
-    def __init__(self, pipe: DiffusionPipeline, device: str = "cpu"):
+class PuLIDMixin:
+    def __init__(self, id_features_extractor: PuLIDFeaturesExtractor=None, device: str = "cpu"):
         self.device = device
         # ID encoders
         self.id_adapter = IDEncoder().to(self.device)
-        self.pipe = pipe
-        self.hack_unet_attn_layers(pipe.unet)
-        self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
-        self.load_weights()
+        self.features_extractor = PuLIDFeaturesExtractor(device=self.device) if id_features_extractor == None else id_features_extractor
 
-    def load_weights(self):
+    def load_pulid_weights(self):
         hf_hub_download('guozinan/PuLID', 'pulid_v1.bin', local_dir='models')
         ckpt_path = 'models/pulid_v1.bin'
         state_dict = torch.load(ckpt_path, map_location='cpu')
@@ -194,20 +191,32 @@ class PuLIDAdapter:
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
-    def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):
-        pulid_cross_attention = {}
-        cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
-
-        if pulid_mode == 'fidelity':
+    def set_pulid_mode(mode: str = "fidelity"):
+        if mode == 'fidelity':
             attention.NUM_ZERO = 8
             attention.ORTHO = False
             attention.ORTHO_v2 = True
-        elif pulid_mode == 'extremely style':
+        elif mode == 'extremely style':
             attention.NUM_ZERO = 16
             attention.ORTHO = True
             attention.ORTHO_v2 = False
         else:
             raise ValueError
+
+    
+class PuLIDAdapter(PuLIDMixin):
+    def __init__(self, pipe: DiffusionPipeline, id_features_extractor: PuLIDFeaturesExtractor=None, device: str = "cpu"):
+        self.pipe = pipe
+        super().__init__(id_features_extractor=id_features_extractor, device=device)
+        self.hack_unet_attn_layers(pipe.unet)
+        self.load_pulid_weights()
+
+
+    def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):
+        pulid_cross_attention = {}
+        cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
+
+        self.set_pulid_mode(pulid_mode)
 
         if id_image is not None or id_image.any():
             id_features, id_clip_embeds = self.features_extractor(id_image)

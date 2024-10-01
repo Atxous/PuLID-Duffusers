@@ -31,7 +31,8 @@ dependencies = [
     "safetensors",
     "xformers",
     "apex",
-    "timm"
+    "timm",
+    "numpy"
 ]
 
 [project.urls]

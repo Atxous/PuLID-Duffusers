@@ -5,6 +5,8 @@ from huggingface_hub import hf_hub_download
 
 import gc
 import cv2
+from PIL import Image
+import numpy as np
 import insightface
 from facexlib.parsing import init_parsing_model
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
@@ -28,6 +30,7 @@ if hasattr(F, "scaled_dot_product_attention"):
     from .attention_processor import IDAttnProcessor2_0 as IDAttnProcessor
 else:
     from .attention_processor import AttnProcessor, IDAttnProcessor
+    
 
 
 class PuLIDFeaturesExtractor():
@@ -75,10 +78,7 @@ class PuLIDFeaturesExtractor():
 
     
     def __call__(self, image):
-        """
-        Args:
-            image: numpy rgb image, range [0, 255]
-        """
+        image = np.array(image)
         self.face_helper.clean_all()
         image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         # get antelopev2 embedding

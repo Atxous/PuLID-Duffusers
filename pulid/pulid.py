@@ -191,7 +191,7 @@ class PuLIDMixin:
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
-    def set_pulid_mode(mode: str = "fidelity"):
+    def set_pulid_mode(self, mode: str = "fidelity"):
         if mode == 'fidelity':
             attention.NUM_ZERO = 8
             attention.ORTHO = False

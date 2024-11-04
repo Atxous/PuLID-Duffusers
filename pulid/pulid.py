@@ -178,7 +178,7 @@ class PuLID:
                 getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
 
 
-    def set_mode(self, mode: str = "default"):
+    def set_mode(self, mode: str):
         if mode == 'fidelity':
             attention.NUM_ZERO = 8
             attention.ORTHO = False
@@ -187,12 +187,24 @@ class PuLID:
             attention.NUM_ZERO = 16
             attention.ORTHO = True
             attention.ORTHO_v2 = False
-        elif mode == 'default':
-            attention.NUM_ZERO = 0
+        else:
+            raise ValueError("Unsupported pulid mode. Use 'fidelity' or 'extremely style'.")
+        
+    def set_editability(editability: int):
+        attention.NUM_ZERO = editability
+    
+    def set_ortho(ortho: str):
+        if ortho == 'v1':
+            attention.ORTHO = True
+            attention.ORTHO_v2 = False
+        elif ortho == 'v2':
+            attention.ORTHO = False
+            attention.ORTHO_v2 = True
+        elif ortho == 'off':
             attention.ORTHO = False
             attention.ORTHO_v2 = False
         else:
-            raise ValueError
+            raise ValueError("Unsupported pulid ortho. Use 'v1', 'v2' or 'off'.")
  
     def to(self, device: str):
         self.device = device
@@ -212,12 +224,22 @@ class PuLIDAdapter:
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
         self.pulid.load_weights(weights)
 
-
-    def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):
+    def __call__(self, *args,
+        id_image = None,
+        id_scale: float = 1,
+        pulid_ortho: str = "off",
+        pulid_editability: int = 16,
+        pulid_mode:Optional[str],
+        **kwargs
+    ):
         pulid_cross_attention_kwargs = {}
         cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
 
-        self.pulid.set_mode(pulid_mode)
+        if not pulid_mode == None:
+            self.pulid.set_mode(pulid_mode)
+        else:
+            self.pulid.set_editability(pulid_editability)
+            self.pulid.set_ortho(pulid_ortho)
 
         if not id_image == None:
             id_embedding = self.pulid.get_embeddings(id_image)

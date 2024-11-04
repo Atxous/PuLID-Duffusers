@@ -243,7 +243,7 @@ class IDAttnProcessor(torch.nn.Module):
 
 
 
-def hack_unet(self, unet):
+def hack_unet(unet):
         id_adapter_attn_procs = {}
         for name, _ in unet.attn_processors.items():
             cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim

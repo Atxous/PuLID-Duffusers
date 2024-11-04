@@ -21,15 +21,10 @@ from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from .utils import img2tensor, tensor2img, to_gray
 
 from diffusers import DiffusionPipeline
-from typing import Optional
 
-from . import attention_processor as attention
-
-if hasattr(F, "scaled_dot_product_attention"):
-    from .attention_processor import AttnProcessor2_0 as AttnProcessor
-    from .attention_processor import IDAttnProcessor2_0 as IDAttnProcessor
-else:
-    from .attention_processor import AttnProcessor, IDAttnProcessor
+from . import attention as attention
+from .attention import AttnProcessor
+from .attention import IDAttnProcessor
     
 
 
@@ -142,6 +137,7 @@ class PuLIDMixin:
         # ID encoders
         self.id_adapter = IDEncoder().to(self.device)
         self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
+        self.id_adapter_attn_layers = None
     
     def get_id_embedding(self, face_info_embeds, clip_embeds):
         id_uncond = torch.zeros_like(face_info_embeds)

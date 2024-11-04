@@ -131,7 +131,7 @@ class PuLIDFeaturesExtractor():
 
 
 
-class PuLIDMixin:
+class PuLID:
     def __init__(self, device: str = "cpu"):
         self.device = device
         # ID encoders
@@ -175,11 +175,14 @@ class PuLIDMixin:
             raise ValueError
 
     
-class PuLIDAdapter(PuLIDMixin):
+class PuLIDAdapter:
     def __init__(self, pipe: DiffusionPipeline, device: str = "cpu"):
         self.pipe = pipe
-        super().__init__(device=device)
-        self.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
+        self.pulid = PuLID(device=device)
+        self.pulid.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
+
+    def load_weights(self, weights: str | torch.Tensor):
+        self.pulid.load_weights(weights)
 
 
     def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):
@@ -189,8 +192,8 @@ class PuLIDAdapter(PuLIDMixin):
         self.set_pulid_mode(pulid_mode)
 
         if not id_image == None:
-            id_features, id_clip_embeds = self.features_extractor(id_image)
-            id_embedding = self.get_id_embedding(id_features, id_clip_embeds)
+            id_features, id_clip_embeds = self.pulid.features_extractor(id_image)
+            id_embedding = self.pulid.get_id_embedding(id_features, id_clip_embeds)
             pulid_cross_attention_kwargs = { 'id_embedding': id_embedding, 'id_scale': id_scale }
 
         return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs ) 

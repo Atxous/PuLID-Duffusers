@@ -149,10 +149,8 @@ class PuLIDMixin:
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
-    def load_pulid_weights(self):
-        hf_hub_download('guozinan/PuLID', 'pulid_v1.bin', local_dir='models')
-        ckpt_path = 'models/pulid_v1.bin'
-        state_dict = torch.load(ckpt_path, map_location='cpu')
+    def load_weights(self, weights: str | torch.Tensor):
+        state_dict = torch.load(weights, map_location='cpu') if isinstance(weights, str) else weights
         state_dict_dict = {}
         for k, v in state_dict.items():
             module = k.split('.')[0]
@@ -182,7 +180,6 @@ class PuLIDAdapter(PuLIDMixin):
         self.pipe = pipe
         super().__init__(device=device)
         self.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
-        self.load_pulid_weights()
 
 
     def __call__(self, *args, id_image = None, id_scale: float = 1, pulid_mode:str = 'fidelity', **kwargs):

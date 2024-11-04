@@ -15,6 +15,8 @@ from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
 
+from PIL import Image
+
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from .utils import img2tensor, tensor2img, to_gray
@@ -25,8 +27,8 @@ from typing import Optional, Dict
 
 
 class PuLIDFeaturesExtractor():
-    def __init__(self, device: str = "cpu"):
-        self.device = device
+    def __init__(self):
+        self.device = "cpu"
         # preprocessors
         # face align and parsing
         self.face_helper = FaceRestoreHelper(
@@ -34,16 +36,14 @@ class PuLIDFeaturesExtractor():
             face_size=512,
             crop_ratio=(1, 1),
             det_model='retinaface_resnet50',
-            save_ext='png',
-            device=self.device,
+            save_ext='png'
         )
         self.face_helper.face_parse = None
         self.face_helper.face_parse = init_parsing_model(model_name='bisenet', device=self.device)
 
         # clip-vit backbone
         model, _, _ = create_model_and_transforms('EVA02-CLIP-L-14-336', 'eva_clip', force_custom_clip=True)
-        model = model.visual
-        self.clip_vision_model = model.to(self.device)
+        self.clip_vision_model = model.visual
         eva_transform_mean = getattr(self.clip_vision_model, 'image_mean', OPENAI_DATASET_MEAN)
         eva_transform_std = getattr(self.clip_vision_model, 'image_std', OPENAI_DATASET_STD)
         if not isinstance(eva_transform_mean, (list, tuple)):
@@ -68,7 +68,7 @@ class PuLIDFeaturesExtractor():
         self.debug_img_list = []
 
     
-    def __call__(self, image):
+    def __call__(self, image: Image):
         image = np.array(image)
         self.face_helper.clean_all()
         image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -124,17 +124,22 @@ class PuLIDFeaturesExtractor():
         
         return id_cond, id_vit_hidden
 
-
+    def to(self, device:str):
+        self.device = device
+        self.face_helper.device = device
+        self.face_helper.face_parse.to(device)
+        self.clip_vision_model.to(device)
 
 
 class PuLID:
-    def __init__(self, id_encoder: IDEncoder | IDFormer, device: str = "cpu"):
-        self.device = device
-        self.id_encoder = id_encoder.to(self.device)
-        self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
+    def __init__(self, id_encoder: IDEncoder | IDFormer):
+        self.device = "cpu"
+        self.id_encoder = id_encoder
+        self.features_extractor = PuLIDFeaturesExtractor()
         self.ca_layers = None
     
-    def get_id_embedding(self, face_info_embeds, clip_embeds):
+    def get_embeddings(self, image: Image):
+        face_info_embeds, clip_embeds = self.features_extractor(image)
         id_uncond = torch.zeros_like(face_info_embeds)
         id_vit_hidden_uncond = []
         for layer_idx in range(0, len(clip_embeds)):
@@ -157,6 +162,7 @@ class PuLID:
         else:
             # If `weights` is already a dictionary, use it directly
             state_dict = weights
+            
         state_dict_dict = {}
         for k, v in state_dict.items():
             module = k.split('.')[0]
@@ -187,12 +193,20 @@ class PuLID:
             attention.ORTHO_v2 = False
         else:
             raise ValueError
+ 
+    def to(self, device: str):
+        self.device = device
+        self.id_encoder.to(device)
+        self.features_extractor.to(device)
+        if not self.ca_layers == None:
+            self.ca_layers.to(device)
 
     
 class PuLIDAdapter:
-    def __init__(self, pipe: DiffusionPipeline, id_encoder:Optional[ IDEncoder | IDFormer ] = IDEncoder(), device: str = "cpu"):
+    def __init__(self, pipe: DiffusionPipeline, id_encoder:Optional[ IDEncoder | IDFormer ] = IDEncoder()):
         self.pipe = pipe
-        self.pulid = PuLID(id_encoder=id_encoder, device=device)
+        self.pulid = PuLID(id_encoder=id_encoder)
+        self.pulid.to(self.pipe.device)
         self.pulid.ca_layers = attention.hack_unet(pipe.unet)
 
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
@@ -206,8 +220,7 @@ class PuLIDAdapter:
         self.pulid.set_mode(pulid_mode)
 
         if not id_image == None:
-            id_features, id_clip_embeds = self.pulid.features_extractor(id_image)
-            id_embedding = self.pulid.get_id_embedding(id_features, id_clip_embeds)
+            id_embedding = self.pulid.get_embeddings(id_image)
             pulid_cross_attention_kwargs = { 'id_embedding': id_embedding, 'id_scale': id_scale }
 
-        return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs ) 
+        return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs )

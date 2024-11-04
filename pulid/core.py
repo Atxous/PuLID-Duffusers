@@ -20,7 +20,7 @@ from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 
 
-from typing import Dict
+from typing import Dict, Optional
 
 
 class PuLIDFeaturesExtractor():
@@ -129,11 +129,12 @@ class PuLIDFeaturesExtractor():
 
 
 class PuLIDImageEncoder:
-    def __init__(self, id_encoder: IDEncoder | IDFormer):
+    def __init__(self, id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
         self.device = "cpu"
+        if id_encoder == None:
+            id_encoder = IDFormer if use_id_former else IDEncoder
         self.id_encoder = id_encoder
         self.features_extractor = PuLIDFeaturesExtractor()
-        self.ca_layers = None
 
     def to(self, device: str):
         self.device = device
@@ -160,8 +161,8 @@ class PuLIDImageEncoder:
 
 
 class PuLID(PuLIDImageEncoder):
-    def __init__(self, id_encoder: IDEncoder | IDFormer, ca_layers: torch.nn.Module):
-        super().__init__(id_encoder)
+    def __init__(self, ca_layers: torch.nn.Module, id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
+        super().__init__(id_encoder, use_id_former=use_id_former)
         self.ca_layers = ca_layers
     
 

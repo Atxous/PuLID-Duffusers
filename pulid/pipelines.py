@@ -21,11 +21,9 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
             super().__init__(*args, **kwargs)
             self.pulid = pulid
 
-        def load_pulid(self, weights: str | Dict[str, torch.Tensor], id_encoder: Optional[IDEncoder | IDFormer], id_former: bool = True):
+        def load_pulid(self, weights: str | Dict[str, torch.Tensor], id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
             if self.pulid == None:
-                if id_encoder == None:
-                    id_encoder = IDFormer if id_former else IDEncoder
-                self.pulid = PuLID(id_encoder=id_encoder, ca_layers=hack_unet_ca_layers(self.unet))
+                self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
             self.pulid.load_weights(weights)
 
         def to(self, device: str):

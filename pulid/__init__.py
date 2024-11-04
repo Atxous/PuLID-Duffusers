@@ -1,2 +1,3 @@
-from .pulid import PuLIDAdapter as PuLID
+from .pulid import PuLID
 from . import encoders
+from. import pipelines

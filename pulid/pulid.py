@@ -21,9 +21,8 @@ from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from .utils import img2tensor, tensor2img, to_gray
 
-from diffusers import DiffusionPipeline
 
-from typing import Optional, Dict
+from typing import Dict
 
 
 class PuLIDFeaturesExtractor():
@@ -212,37 +211,3 @@ class PuLID:
         self.features_extractor.to(device)
         if not self.ca_layers == None:
             self.ca_layers.to(device)
-
-    
-class PuLIDAdapter:
-    def __init__(self, pipe: DiffusionPipeline, id_encoder:Optional[ IDEncoder | IDFormer ] = IDEncoder()):
-        self.pipe = pipe
-        self.pulid = PuLID(id_encoder=id_encoder)
-        self.pulid.to(self.pipe.device)
-        self.pulid.ca_layers = attention.hack_unet(pipe.unet)
-
-    def load_weights(self, weights: str | Dict[str, torch.Tensor]):
-        self.pulid.load_weights(weights)
-
-    def __call__(self, *args,
-        id_image = None,
-        id_scale: float = 1,
-        pulid_ortho: str = "off",
-        pulid_editability: int = 16,
-        pulid_mode:Optional[str],
-        **kwargs
-    ):
-        pulid_cross_attention_kwargs = {}
-        cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
-
-        if not pulid_mode == None:
-            self.pulid.set_mode(pulid_mode)
-        else:
-            self.pulid.set_editability(pulid_editability)
-            self.pulid.set_ortho(pulid_ortho)
-
-        if not id_image == None:
-            id_embedding = self.pulid.get_embeddings(id_image)
-            pulid_cross_attention_kwargs = { 'id_embedding': id_embedding, 'id_scale': id_scale }
-
-        return self.pipe(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs )

@@ -223,7 +223,7 @@ def hack_unet_ca_layers(unet):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
         if cross_attention_dim is not None:
-            id_adapter_attn_procs[name] = attention.IDAttnProcessor(
+            id_adapter_attn_procs[name] = attention.PuLIDAttnProcessor(
                 hidden_size=hidden_size,
                 cross_attention_dim=cross_attention_dim,
             ).to(unet.device)

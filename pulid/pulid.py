@@ -129,9 +129,9 @@ class PuLIDFeaturesExtractor():
 class PuLID:
     def __init__(self, id_encoder: IDEncoder | IDFormer, device: str = "cpu"):
         self.device = device
-        self.id_adapter = id_encoder.to(self.device)
+        self.id_encoder = id_encoder.to(self.device)
         self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
-        self.id_adapter_attn_layers = None
+        self.ca_layers = None
     
     def get_id_embedding(self, face_info_embeds, clip_embeds):
         id_uncond = torch.zeros_like(face_info_embeds)
@@ -144,7 +144,7 @@ class PuLID:
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
     def load_weights(self, weights: str | torch.Tensor):
-        state_dict = torch.load(weights, map_location='cpu') if isinstance(weights, str) else weights
+        state_dict = torch.load(weights) if isinstance(weights, str) else weights
         state_dict_dict = {}
         for k, v in state_dict.items():
             module = k.split('.')[0]
@@ -152,8 +152,12 @@ class PuLID:
             new_k = k[len(module) + 1 :]
             state_dict_dict[module][new_k] = v
         for module in state_dict_dict:
-            print(f'loading from {module}')
-            getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
+            if module == "id_adapter" or module == "pulid_encoder":
+                self.id_encoder.load_state_dict(state_dict_dict[module], strict=True)
+            elif module == "id_adapter_attn_layers" or module == "pulid_ca":
+                self.ca_layers.load_state_dict(state_dict_dict[module], strict=True)
+            else:
+                getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
 
 
     def set_mode(self, mode: str = "default"):
@@ -177,7 +181,7 @@ class PuLIDAdapter:
     def __init__(self, pipe: DiffusionPipeline, id_encoder:Optional[ IDEncoder | IDFormer ] = IDEncoder(), device: str = "cpu"):
         self.pipe = pipe
         self.pulid = PuLID(id_encoder=id_encoder, device=device)
-        self.pulid.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
+        self.pulid.ca_layers = attention.hack_unet(pipe.unet)
 
     def load_weights(self, weights: str | torch.Tensor):
         self.pulid.load_weights(weights)

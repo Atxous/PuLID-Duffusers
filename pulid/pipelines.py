@@ -1,6 +1,5 @@
-from .core import PuLID
+from .core import PuLID, hack_unet_ca_layers
 import torch
-from .attention import hack_unet
 from .encoders import IDEncoder, IDFormer
 from diffusers import (
     DiffusionPipeline,
@@ -27,7 +26,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                 if id_encoder == None:
                     id_encoder = IDFormer if id_former else IDEncoder
                 self.pulid = PuLID(id_encoder=id_encoder)
-                self.pulid.ca_layers = hack_unet(self.unet)
+                self.pulid.ca_layers = hack_unet_ca_layers(self.unet)
             self.pulid.load_weights(weights)
 
         def to(self, device: str):

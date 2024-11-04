@@ -1,6 +1,6 @@
 from .encoders import IDEncoder, IDFormer
-from . import attention as attention
-
+from . import attention
+from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
 import torch
 import gc
@@ -18,7 +18,6 @@ from PIL import Image
 
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
 
 from typing import Dict
@@ -210,4 +209,31 @@ class PuLID(PuLIDImageEncoder):
         super().to(device)
         self.ca_layers.to(device)
 
-__all__ = ["PuLID", "PuLIDFeaturesExtractor", "PuLIDImageEncoder", "IDEncoder", "IDFormer"]
+
+def hack_unet_ca_layers(unet):
+    id_adapter_attn_procs = {}
+    for name, _ in unet.attn_processors.items():
+        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+        if name.startswith("mid_block"):
+            hidden_size = unet.config.block_out_channels[-1]
+        elif name.startswith("up_blocks"):
+            block_id = int(name[len("up_blocks.")])
+            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+        elif name.startswith("down_blocks"):
+            block_id = int(name[len("down_blocks.")])
+            hidden_size = unet.config.block_out_channels[block_id]
+        if cross_attention_dim is not None:
+            id_adapter_attn_procs[name] = attention.IDAttnProcessor(
+                hidden_size=hidden_size,
+                cross_attention_dim=cross_attention_dim,
+            ).to(unet.device)
+        else:
+            id_adapter_attn_procs[name] = attention.AttnProcessor()
+    unet.set_attn_processor(id_adapter_attn_procs)
+    return torch.nn.ModuleList(unet.attn_processors.values())
+
+
+def get_unet_ca_layers(unet):
+    return torch.nn.ModuleList(unet.attn_processors.values())
+
+__all__ = ["PuLID", "PuLIDFeaturesExtractor", "PuLIDImageEncoder", "IDEncoder", "IDFormer", "hack_unet_ca_layers", "get_unet_ca_layers"]

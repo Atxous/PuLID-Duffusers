@@ -156,7 +156,7 @@ class PuLID:
             getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
 
 
-    def set_pulid_mode(self, mode: str = "fidelity"):
+    def set_mode(self, mode: str = "default"):
         if mode == 'fidelity':
             attention.NUM_ZERO = 8
             attention.ORTHO = False
@@ -165,10 +165,10 @@ class PuLID:
             attention.NUM_ZERO = 16
             attention.ORTHO = True
             attention.ORTHO_v2 = False
-        #elif mode == 'default':
-        #    attention.NUM_ZERO = 0
-        #    attention.ORTHO = False
-        #    attention.ORTHO_v2 = False
+        elif mode == 'default':
+            attention.NUM_ZERO = 0
+            attention.ORTHO = False
+            attention.ORTHO_v2 = False
         else:
             raise ValueError
 

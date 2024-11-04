@@ -130,14 +130,19 @@ class PuLIDFeaturesExtractor():
         self.clip_vision_model.to(device)
 
 
-class PuLID:
+class PuLIDImageEncoder:
     def __init__(self, id_encoder: IDEncoder | IDFormer):
         self.device = "cpu"
         self.id_encoder = id_encoder
         self.features_extractor = PuLIDFeaturesExtractor()
         self.ca_layers = None
-    
-    def get_embeddings(self, image: Image):
+
+    def to(self, device: str):
+        self.device = device
+        self.id_encoder.to(device)
+        self.features_extractor.to(device)
+
+    def __call__(self, image: Image):
         face_info_embeds, clip_embeds = self.features_extractor(image)
         id_uncond = torch.zeros_like(face_info_embeds)
         id_vit_hidden_uncond = []
@@ -147,6 +152,38 @@ class PuLID:
         uncond_id_embedding = self.id_encoder(id_uncond, id_vit_hidden_uncond)
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
+    
+    def load_weights(self, weights: str | Dict[str, torch.Tensor]):
+            # Check if `weights` is a file path or an already loaded dictionary
+        if isinstance(weights, str):
+            # Load the file based on its extension
+            if weights.endswith('.safetensors'):
+                state_dict = load_file(weights)  # Load using safetensors
+            elif weights.endswith('.bin'):
+                state_dict = torch.load(weights)  # Load using torch (pickle)
+            else:
+                raise ValueError("Unsupported file format. Use '.safetensors' or '.bin'.")
+        else:
+            # If `weights` is already a dictionary, use it directly
+            state_dict = weights
+            
+        state_dict_dict = {}
+        for k, v in state_dict.items():
+            module = k.split('.')[0]
+            state_dict_dict.setdefault(module, {})
+            new_k = k[len(module) + 1 :]
+            state_dict_dict[module][new_k] = v
+        for module in state_dict_dict:
+            if module == "id_adapter" or module == "pulid_encoder":
+                self.id_encoder.load_state_dict(state_dict_dict[module], strict=True)
+
+
+
+class PuLID(PuLIDImageEncoder):
+    def __init__(self, id_encoder: IDEncoder | IDFormer, ca_layers: torch.nn.Module):
+        super().__init__(id_encoder)
+        self.ca_layers = ca_layers
+    
 
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
             # Check if `weights` is a file path or an already loaded dictionary
@@ -206,10 +243,7 @@ class PuLID:
             raise ValueError("Unsupported pulid ortho. Use 'v1', 'v2' or 'off'.")
  
     def to(self, device: str):
-        self.device = device
-        self.id_encoder.to(device)
-        self.features_extractor.to(device)
-        if not self.ca_layers == None:
-            self.ca_layers.to(device)
+        super().to(device)
+        self.ca_layers.to(device)
 
-__all__ = ["PuLID", "PuLIDFeaturesExtractor", "IDEncoder", "IDFormer"]
+__all__ = ["PuLID", "PuLIDFeaturesExtractor", "PuLIDImageEncoder", "IDEncoder", "IDFormer"]

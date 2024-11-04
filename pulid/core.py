@@ -3,7 +3,6 @@ from . import attention as attention
 
 
 import torch
-from safetensors.torch import load_file
 import gc
 import cv2
 import numpy as np
@@ -19,7 +18,7 @@ from PIL import Image
 
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
-from .utils import img2tensor, tensor2img, to_gray
+from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
 
 from typing import Dict
@@ -154,29 +153,11 @@ class PuLIDImageEncoder:
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
     
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
-            # Check if `weights` is a file path or an already loaded dictionary
-        if isinstance(weights, str):
-            # Load the file based on its extension
-            if weights.endswith('.safetensors'):
-                state_dict = load_file(weights)  # Load using safetensors
-            elif weights.endswith('.bin'):
-                state_dict = torch.load(weights)  # Load using torch (pickle)
-            else:
-                raise ValueError("Unsupported file format. Use '.safetensors' or '.bin'.")
-        else:
-            # If `weights` is already a dictionary, use it directly
-            state_dict = weights
-            
-        state_dict_dict = {}
-        for k, v in state_dict.items():
-            module = k.split('.')[0]
-            state_dict_dict.setdefault(module, {})
-            new_k = k[len(module) + 1 :]
-            state_dict_dict[module][new_k] = v
-        for module in state_dict_dict:
+        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
+        state_dict = state_dict_extract_names(state_dict)  
+        for module in state_dict:
             if module == "id_adapter" or module == "pulid_encoder":
-                self.id_encoder.load_state_dict(state_dict_dict[module], strict=True)
-
+                self.id_encoder.load_state_dict(state_dict[module], strict=True)
 
 
 class PuLID(PuLIDImageEncoder):
@@ -186,32 +167,15 @@ class PuLID(PuLIDImageEncoder):
     
 
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
-            # Check if `weights` is a file path or an already loaded dictionary
-        if isinstance(weights, str):
-            # Load the file based on its extension
-            if weights.endswith('.safetensors'):
-                state_dict = load_file(weights)  # Load using safetensors
-            elif weights.endswith('.bin'):
-                state_dict = torch.load(weights)  # Load using torch (pickle)
-            else:
-                raise ValueError("Unsupported file format. Use '.safetensors' or '.bin'.")
-        else:
-            # If `weights` is already a dictionary, use it directly
-            state_dict = weights
-            
-        state_dict_dict = {}
-        for k, v in state_dict.items():
-            module = k.split('.')[0]
-            state_dict_dict.setdefault(module, {})
-            new_k = k[len(module) + 1 :]
-            state_dict_dict[module][new_k] = v
-        for module in state_dict_dict:
+        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
+        state_dict = state_dict_extract_names(state_dict)  
+        for module in state_dict:
             if module == "id_adapter" or module == "pulid_encoder":
-                self.id_encoder.load_state_dict(state_dict_dict[module], strict=True)
+                self.id_encoder.load_state_dict(state_dict[module], strict=True)
             elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                self.ca_layers.load_state_dict(state_dict_dict[module], strict=True)
+                self.ca_layers.load_state_dict(state_dict[module], strict=True)
             else:
-                getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
+                getattr(self, module).load_state_dict(state_dict[module], strict=True)
 
 
     def set_mode(self, mode: str):

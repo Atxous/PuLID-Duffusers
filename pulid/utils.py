@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from torchvision.utils import make_grid
 from transformers import PretrainedConfig
+from typing import Dict
 
 
 def seed_everything(seed):
@@ -165,3 +166,24 @@ def to_gray(img):
         x = 0.299 * img[:, 0:1] + 0.587 * img[:, 1:2] + 0.114 * img[:, 2:3]
         x = x.repeat(1, 3, 1, 1)
         return x
+
+
+from safetensors.torch import load_file
+
+def load_file_weights(path: str):
+    # Load the file based on its extension
+    if path.endswith('.safetensors'):
+        return load_file(path)  # Load using safetensors
+    elif path.endswith('.bin'):
+        return torch.load(path)  # Load using torch (pickle)
+    else:
+        raise ValueError("Unsupported file format. Use '.safetensors' or '.bin'.")
+    
+def state_dict_extract_names(state_dict: Dict[str, torch.Tensor]) -> dict:
+    state_dict_dict = {}
+    for k, v in state_dict.items():
+        module = k.split('.')[0]
+        state_dict_dict.setdefault(module, {})
+        new_k = k[len(module) + 1 :]
+        state_dict_dict[module][new_k] = v
+    return state_dict_dict

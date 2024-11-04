@@ -135,14 +135,23 @@ class PuLIDFeaturesExtractor():
 
 
 
-    
 
 class PuLIDMixin:
-    def __init__(self, id_features_extractor: PuLIDFeaturesExtractor=None, device: str = "cpu"):
+    def __init__(self, device: str = "cpu"):
         self.device = device
         # ID encoders
         self.id_adapter = IDEncoder().to(self.device)
-        self.features_extractor = PuLIDFeaturesExtractor(device=self.device) if id_features_extractor == None else id_features_extractor
+        self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
+    
+    def get_id_embedding(self, face_info_embeds, clip_embeds):
+        id_uncond = torch.zeros_like(face_info_embeds)
+        id_vit_hidden_uncond = []
+        for layer_idx in range(0, len(clip_embeds)):
+            id_vit_hidden_uncond.append(torch.zeros_like(clip_embeds[layer_idx]))
+        id_embedding = self.id_adapter(face_info_embeds, clip_embeds)
+        uncond_id_embedding = self.id_adapter(id_uncond, id_vit_hidden_uncond)
+        # return id_embedding
+        return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
     def load_pulid_weights(self):
         hf_hub_download('guozinan/PuLID', 'pulid_v1.bin', local_dir='models')
@@ -180,16 +189,6 @@ class PuLIDMixin:
         unet.set_attn_processor(id_adapter_attn_procs)
         self.id_adapter_attn_layers = nn.ModuleList(unet.attn_processors.values())
 
-    
-    def get_id_embedding(self, face_info_embeds, clip_embeds):
-        id_uncond = torch.zeros_like(face_info_embeds)
-        id_vit_hidden_uncond = []
-        for layer_idx in range(0, len(clip_embeds)):
-            id_vit_hidden_uncond.append(torch.zeros_like(clip_embeds[layer_idx]))
-        id_embedding = self.id_adapter(face_info_embeds, clip_embeds)
-        uncond_id_embedding = self.id_adapter(id_uncond, id_vit_hidden_uncond)
-        # return id_embedding
-        return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
     def set_pulid_mode(self, mode: str = "fidelity"):
         if mode == 'fidelity':

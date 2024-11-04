@@ -163,28 +163,6 @@ class PuLIDMixin:
             print(f'loading from {module}')
             getattr(self, module).load_state_dict(state_dict_dict[module], strict=True)
 
-    def hack_unet_attn_layers(self, unet):
-        id_adapter_attn_procs = {}
-        for name, _ in unet.attn_processors.items():
-            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = unet.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = unet.config.block_out_channels[block_id]
-            if cross_attention_dim is not None:
-                id_adapter_attn_procs[name] = IDAttnProcessor(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                ).to(unet.device)
-            else:
-                id_adapter_attn_procs[name] = AttnProcessor()
-        unet.set_attn_processor(id_adapter_attn_procs)
-        self.id_adapter_attn_layers = nn.ModuleList(unet.attn_processors.values())
-
 
     def set_pulid_mode(self, mode: str = "fidelity"):
         if mode == 'fidelity':
@@ -203,7 +181,7 @@ class PuLIDAdapter(PuLIDMixin):
     def __init__(self, pipe: DiffusionPipeline, id_features_extractor: PuLIDFeaturesExtractor=None, device: str = "cpu"):
         self.pipe = pipe
         super().__init__(id_features_extractor=id_features_extractor, device=device)
-        self.hack_unet_attn_layers(pipe.unet)
+        self.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
         self.load_pulid_weights()
 
 

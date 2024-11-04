@@ -3,6 +3,7 @@ from . import attention as attention
 
 
 import torch
+from safetensors.torch import load_file
 import gc
 import cv2
 import numpy as np
@@ -20,7 +21,7 @@ from .utils import img2tensor, tensor2img, to_gray
 
 from diffusers import DiffusionPipeline
 
-from typing import Optional
+from typing import Optional, Dict
 
 
 class PuLIDFeaturesExtractor():
@@ -143,8 +144,19 @@ class PuLID:
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 
-    def load_weights(self, weights: str | torch.Tensor):
-        state_dict = torch.load(weights) if isinstance(weights, str) else weights
+    def load_weights(self, weights: str | Dict[str, torch.Tensor]):
+            # Check if `weights` is a file path or an already loaded dictionary
+        if isinstance(weights, str):
+            # Load the file based on its extension
+            if weights.endswith('.safetensors'):
+                state_dict = load_file(weights)  # Load using safetensors
+            elif weights.endswith('.bin'):
+                state_dict = torch.load(weights)  # Load using torch (pickle)
+            else:
+                raise ValueError("Unsupported file format. Use '.safetensors' or '.bin'.")
+        else:
+            # If `weights` is already a dictionary, use it directly
+            state_dict = weights
         state_dict_dict = {}
         for k, v in state_dict.items():
             module = k.split('.')[0]
@@ -183,7 +195,7 @@ class PuLIDAdapter:
         self.pulid = PuLID(id_encoder=id_encoder, device=device)
         self.pulid.ca_layers = attention.hack_unet(pipe.unet)
 
-    def load_weights(self, weights: str | torch.Tensor):
+    def load_weights(self, weights: str | Dict[str, torch.Tensor]):
         self.pulid.load_weights(weights)
 
 

@@ -187,7 +187,7 @@ class PuLIDAdapter:
         pulid_cross_attention_kwargs = {}
         cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
 
-        self.set_pulid_mode(pulid_mode)
+        self.set_mode(pulid_mode)
 
         if not id_image == None:
             id_features, id_clip_embeds = self.pulid.features_extractor(id_image)

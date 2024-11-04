@@ -1,4 +1,4 @@
-from .pulid import PuLID
+from .core import PuLID
 import torch
 from .attention import hack_unet
 from .encoders import IDEncoder, IDFormer

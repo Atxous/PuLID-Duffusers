@@ -211,3 +211,5 @@ class PuLID:
         self.features_extractor.to(device)
         if not self.ca_layers == None:
             self.ca_layers.to(device)
+
+__all__ = ["PuLID", "PuLIDFeaturesExtractor", "IDEncoder", "IDFormer"]

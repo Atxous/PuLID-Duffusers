@@ -1,20 +1,18 @@
-from .encoders import IDEncoder
-import torch
-import torch.nn as nn
-from huggingface_hub import hf_hub_download
+from .encoders import IDEncoder, IDFormer
+from . import attention as attention
 
+
+import torch
 import gc
 import cv2
-from PIL import Image
 import numpy as np
 import insightface
 from facexlib.parsing import init_parsing_model
 from facexlib.utils.face_restoration_helper import FaceRestoreHelper
-from huggingface_hub import hf_hub_download, snapshot_download
+from huggingface_hub import snapshot_download
 from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
-import torch.nn.functional as F
 
 from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
@@ -22,10 +20,7 @@ from .utils import img2tensor, tensor2img, to_gray
 
 from diffusers import DiffusionPipeline
 
-from . import attention as attention
-from .attention import AttnProcessor
-from .attention import IDAttnProcessor
-    
+from typing import Optional
 
 
 class PuLIDFeaturesExtractor():
@@ -132,10 +127,9 @@ class PuLIDFeaturesExtractor():
 
 
 class PuLID:
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, id_encoder: IDEncoder | IDFormer, device: str = "cpu"):
         self.device = device
-        # ID encoders
-        self.id_adapter = IDEncoder().to(self.device)
+        self.id_adapter = id_encoder.to(self.device)
         self.features_extractor = PuLIDFeaturesExtractor(device=self.device)
         self.id_adapter_attn_layers = None
     
@@ -171,14 +165,18 @@ class PuLID:
             attention.NUM_ZERO = 16
             attention.ORTHO = True
             attention.ORTHO_v2 = False
+        #elif mode == 'default':
+        #    attention.NUM_ZERO = 0
+        #    attention.ORTHO = False
+        #    attention.ORTHO_v2 = False
         else:
             raise ValueError
 
     
 class PuLIDAdapter:
-    def __init__(self, pipe: DiffusionPipeline, device: str = "cpu"):
+    def __init__(self, pipe: DiffusionPipeline, id_encoder:Optional[ IDEncoder | IDFormer ] = IDEncoder(), device: str = "cpu"):
         self.pipe = pipe
-        self.pulid = PuLID(device=device)
+        self.pulid = PuLID(id_encoder=id_encoder, device=device)
         self.pulid.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
 
     def load_weights(self, weights: str | torch.Tensor):

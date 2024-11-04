@@ -1,1 +1,2 @@
-from .pulid import PuLIDAdapter as PuLID, PuLIDFeaturesExtractor
+from .pulid import PuLIDAdapter as PuLID
+from . import encoders

@@ -25,8 +25,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
             if self.pulid == None:
                 if id_encoder == None:
                     id_encoder = IDFormer if id_former else IDEncoder
-                self.pulid = PuLID(id_encoder=id_encoder)
-                self.pulid.ca_layers = hack_unet_ca_layers(self.unet)
+                self.pulid = PuLID(id_encoder=id_encoder, ca_layers=hack_unet_ca_layers(self.unet))
             self.pulid.load_weights(weights)
 
         def to(self, device: str):

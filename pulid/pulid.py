@@ -178,9 +178,9 @@ class PuLIDMixin:
 
     
 class PuLIDAdapter(PuLIDMixin):
-    def __init__(self, pipe: DiffusionPipeline, id_features_extractor: PuLIDFeaturesExtractor=None, device: str = "cpu"):
+    def __init__(self, pipe: DiffusionPipeline, device: str = "cpu"):
         self.pipe = pipe
-        super().__init__(id_features_extractor=id_features_extractor, device=device)
+        super().__init__(device=device)
         self.id_adapter_attn_layers = attention.hack_unet(pipe.unet)
         self.load_pulid_weights()
 

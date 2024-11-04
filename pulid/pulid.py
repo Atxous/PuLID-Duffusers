@@ -138,8 +138,8 @@ class PuLID:
         id_vit_hidden_uncond = []
         for layer_idx in range(0, len(clip_embeds)):
             id_vit_hidden_uncond.append(torch.zeros_like(clip_embeds[layer_idx]))
-        id_embedding = self.id_adapter(face_info_embeds, clip_embeds)
-        uncond_id_embedding = self.id_adapter(id_uncond, id_vit_hidden_uncond)
+        id_embedding = self.id_encoder(face_info_embeds, clip_embeds)
+        uncond_id_embedding = self.id_encoder(id_uncond, id_vit_hidden_uncond)
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
 

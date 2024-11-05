@@ -10,18 +10,18 @@ from diffusers import (
     StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetInpaintPipeline
 )
-from typing import Type, Optional, Dict
+from typing import Type, Dict
 from functools import wraps
 
 def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
     class PuLIDPipeline(pipeline_constructor):
         @wraps(pipeline_constructor.__init__)
-        def __init__(self, *args, pulid: Optional[PuLID], **kwargs):
+        def __init__(self, *args, pulid: PuLID = None, **kwargs):
             super().__init__(*args, **kwargs)
             self.pulid = pulid
 
-        def load_pulid(self, weights: str | Dict[str, torch.Tensor], id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
+        def load_pulid(self, weights: str | Dict[str, torch.Tensor], id_encoder: IDEncoder | IDFormer = None, use_id_former: bool = True):
             if self.pulid == None:
                 self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
             self.pulid.load_weights(weights)
@@ -31,17 +31,24 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
             self.pulid.to(device)
         
         @classmethod
-        def from_pipe(self, pipeline, pulid: Optional[PuLID], **kwargs):
-            newpipe = super().from_pipe(pipeline, **kwargs)
-            newpipe.pulid = pulid if not pulid == None else pipeline.pulid
-            return newpipe
+        def from_pipe(cls, pipeline, pulid: PuLID = None, **kwargs):
+            pipe = super().from_pipe(pipeline, **kwargs)
+            if not hasattr(pipe, "pulid"):
+                pipe = cls(**pipe.components)
+                
+            if not pulid == None:
+                pipe.pulid = pulid
+            
+            print(pipe.unet.__class__.__name__)
+
+            return pipe
 
         def __call__(self, *args,
             id_image = None,
             id_scale: float = 1,
             pulid_ortho: str = "off",
             pulid_editability: int = 16,
-            pulid_mode:Optional[str],
+            pulid_mode:str = None,
             **kwargs
         ):
             pulid_cross_attention_kwargs = {}

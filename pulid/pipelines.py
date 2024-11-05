@@ -16,33 +16,40 @@ from functools import wraps
 def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
     class PuLIDPipeline(pipeline_constructor):
-        @wraps(pipeline_constructor.__init__)
-        def __init__(self, *args, pulid: PuLID = None, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.pulid = pulid
 
-        def load_pulid(self, weights: str | Dict[str, torch.Tensor], id_encoder: IDEncoder | IDFormer = None, use_id_former: bool = True):
-            if self.pulid == None:
-                self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
-            self.pulid.load_weights(weights)
+        def load_pulid(self, 
+            weights_or_pulid: PuLID | str | Dict[str, torch.Tensor],
+            id_encoder: IDEncoder | IDFormer = None,
+            use_id_former: bool = True
+        ):
+            is_pulid_instance = isinstance(weights_or_pulid, PuLID)
+
+            if is_pulid_instance:
+                self.pulid = PuLID(
+                    id_encoder=weights_or_pulid.id_encoder,
+                    features_extractor=weights_or_pulid.features_extractor,
+                    ca_layers=hack_unet_ca_layers(self.unet)
+                )
+                self.pulid.ca_layers.load_state_dict(torch.nn.ModuleList(self.unet.attn_processors.values()).state_dict())
+            else:
+                if not hasattr(self, "pulid"):
+                    self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
+                self.pulid.load_weights(weights_or_pulid)
 
         def to(self, device: str):
             super().to(device)
             self.pulid.to(device)
         
         @classmethod
-        def from_pipe(cls, pipeline, pulid: PuLID = None, **kwargs):
+        @wraps(pipeline_constructor.from_pipe)
+        def from_pipe(cls, pipeline, **kwargs):
             pipe = super().from_pipe(pipeline, **kwargs)
-            if not hasattr(pipe, "pulid"):
-                pipe = cls(**pipe.components)
-                
-            if not pulid == None:
-                pipe.pulid = pulid
-            
-            print(pipe.unet.__class__.__name__)
-
+            if isinstance(pipeline, PuLIDPipeline):
+                if hasattr(pipeline, "pulid"): pipe.load_pulid(pipeline.pulid)
+            else: pipe = cls(**pipe.components)
             return pipe
-
+        
+        @wraps(pipeline_constructor.__call__)
         def __call__(self, *args,
             id_image = None,
             id_scale: float = 1,
@@ -61,7 +68,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                 self.pulid.set_ortho(pulid_ortho)
 
             if not id_image == None:
-                id_embedding = self.pulid.get_embeddings(id_image)
+                id_embedding = self.pulid(id_image)
                 pulid_cross_attention_kwargs = { 'id_embedding': id_embedding, 'id_scale': id_scale }
 
             return super().__call__(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs )

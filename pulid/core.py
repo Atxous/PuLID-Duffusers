@@ -129,12 +129,16 @@ class PuLIDFeaturesExtractor():
 
 
 class PuLIDImageEncoder:
-    def __init__(self, id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
+    def __init__(self, 
+        id_encoder: IDEncoder | IDFormer = None,
+        features_extractor: PuLIDFeaturesExtractor = None,
+        use_id_former: bool = True
+    ):
         self.device = "cpu"
         if id_encoder == None:
-            id_encoder = IDFormer if use_id_former else IDEncoder
+            id_encoder = IDFormer() if use_id_former else IDEncoder()
         self.id_encoder = id_encoder
-        self.features_extractor = PuLIDFeaturesExtractor()
+        self.features_extractor = features_extractor if features_extractor is not None else PuLIDFeaturesExtractor()
 
     def to(self, device: str):
         self.device = device
@@ -161,8 +165,8 @@ class PuLIDImageEncoder:
 
 
 class PuLID(PuLIDImageEncoder):
-    def __init__(self, ca_layers: torch.nn.Module, id_encoder: Optional[IDEncoder | IDFormer] = None, use_id_former: bool = True):
-        super().__init__(id_encoder, use_id_former=use_id_former)
+    def __init__(self, ca_layers: torch.nn.Module, id_encoder: Optional[IDEncoder | IDFormer] = None, features_extractor: PuLIDFeaturesExtractor = None, use_id_former: bool = True):
+        super().__init__(id_encoder, features_extractor=features_extractor, use_id_former=use_id_former)
         self.ca_layers = ca_layers
     
 
@@ -171,11 +175,11 @@ class PuLID(PuLIDImageEncoder):
         state_dict = state_dict_extract_names(state_dict)  
         for module in state_dict:
             if module == "id_adapter" or module == "pulid_encoder":
-                self.id_encoder.load_state_dict(state_dict[module], strict=True)
+                self.id_encoder.load_state_dict(state_dict=state_dict[module], strict=True)
             elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                self.ca_layers.load_state_dict(state_dict[module], strict=True)
+                self.ca_layers.load_state_dict(state_dict=state_dict[module], strict=True)
             else:
-                getattr(self, module).load_state_dict(state_dict[module], strict=True)
+                getattr(self, module).load_state_dict(state_dict=state_dict[module], strict=True)
 
 
     def set_mode(self, mode: str):

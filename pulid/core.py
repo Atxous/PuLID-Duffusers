@@ -128,7 +128,7 @@ class PuLIDFeaturesExtractor():
         self.clip_vision_model.to(device)
 
 
-class PuLIDImageEncoder:
+class FaceEncoder:
     def __init__(self, 
         id_encoder: IDEncoder | IDFormer = None,
         features_extractor: PuLIDFeaturesExtractor = None,
@@ -164,7 +164,7 @@ class PuLIDImageEncoder:
                 self.id_encoder.load_state_dict(state_dict[module], strict=True)
 
 
-class PuLID(PuLIDImageEncoder):
+class PuLID(FaceEncoder):
     def __init__(self, ca_layers: torch.nn.Module, id_encoder: Optional[IDEncoder | IDFormer] = None, features_extractor: PuLIDFeaturesExtractor = None, use_id_former: bool = True):
         super().__init__(id_encoder, features_extractor=features_extractor, use_id_former=use_id_former)
         self.ca_layers = ca_layers
@@ -241,4 +241,4 @@ def hack_unet_ca_layers(unet):
 def get_unet_ca_layers(unet):
     return torch.nn.ModuleList(unet.attn_processors.values())
 
-__all__ = ["PuLID", "PuLIDFeaturesExtractor", "PuLIDImageEncoder", "IDEncoder", "IDFormer", "hack_unet_ca_layers", "get_unet_ca_layers"]
+__all__ = ["PuLID", "PuLIDFeaturesExtractor", "FaceEncoder", "IDEncoder", "IDFormer", "hack_unet_ca_layers", "get_unet_ca_layers"]

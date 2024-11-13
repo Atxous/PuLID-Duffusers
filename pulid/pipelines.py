@@ -77,12 +77,12 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
 
 
 # SDXL Pipelines
-StableDiffusionXLPuLIDPipeline = pipeline_creator(StableDiffusionXLPipeline)
-StableDiffusionXLPuLIDImg2ImgPipeline = pipeline_creator(StableDiffusionXLImg2ImgPipeline)
-StableDiffusionXLPuLIDInpaintPipeline = pipeline_creator(StableDiffusionXLInpaintPipeline)
-StableDiffusionXLPuLIDControlNetPipeline = pipeline_creator(StableDiffusionXLControlNetPipeline)
-StableDiffusionXLPuLIDControlNetImg2ImgPipeline = pipeline_creator(StableDiffusionXLControlNetImg2ImgPipeline)
-StableDiffusionXLPuLIDControlNetInpaintPipeline = pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)
+class StableDiffusionXLPuLIDPipeline(pipeline_creator(StableDiffusionXLPipeline)): pass
+class StableDiffusionXLPuLIDImg2ImgPipeline(pipeline_creator(StableDiffusionXLImg2ImgPipeline)): pass
+class StableDiffusionXLPuLIDInpaintPipeline(pipeline_creator(StableDiffusionXLInpaintPipeline)): pass
+class StableDiffusionXLPuLIDControlNetPipeline(pipeline_creator(StableDiffusionXLControlNetPipeline)): pass
+class StableDiffusionXLPuLIDControlNetImg2ImgPipeline(pipeline_creator(StableDiffusionXLControlNetImg2ImgPipeline)): pass
+class StableDiffusionXLPuLIDControlNetInpaintPipeline(pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)): pass
 
 __all__ = [
     "StableDiffusionXLPuLIDPipeline",

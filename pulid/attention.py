@@ -20,7 +20,12 @@ class AttnProcessor(nn.Module):
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        temb=None
+        temb=None,
+        id_embedding=None,
+        id_scale=1.0,
+        pulid_ortho: str = None,
+        pulid_num_zero: int = 16,
+        pulid_mode:str = None,
     ):
         residual = hidden_states
 

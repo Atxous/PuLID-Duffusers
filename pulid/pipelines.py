@@ -35,6 +35,8 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                 if not hasattr(self, "pulid"):
                     self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
                 self.pulid.load_weights(weights_or_pulid)
+            
+            self.pulid.to(self.device)
 
         def to(self, device: str):
             super().to(device)

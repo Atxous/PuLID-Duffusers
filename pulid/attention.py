@@ -4,10 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-NUM_ZERO = 0
-ORTHO = False
-ORTHO_v2 = False
-
 class AttnProcessor(nn.Module):
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
@@ -24,9 +20,7 @@ class AttnProcessor(nn.Module):
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        temb=None,
-        id_embedding=None,
-        id_scale=1.0,
+        temb=None
     ):
         residual = hidden_states
 
@@ -121,7 +115,22 @@ class PuLIDAttnProcessor(torch.nn.Module):
         temb=None,
         id_embedding=None,
         id_scale=1.0,
+        pulid_ortho: str = None,
+        pulid_num_zero: int = 16,
+        pulid_mode:str = None,
     ):
+
+        if pulid_mode is not None:
+            if pulid_mode == 'fidelity':
+                pulid_num_zero = 8
+                pulid_ortho = 'v2'
+            elif pulid_mode == 'extremely style':
+                pulid_num_zero = 16
+                pulid_ortho = 'v1'
+            else:
+                raise ValueError("Unsupported pulid mode. Use 'fidelity' or 'extremely style'.")
+            
+
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -174,12 +183,12 @@ class PuLIDAttnProcessor(torch.nn.Module):
 
         # for id embedding
         if id_embedding is not None:
-            if NUM_ZERO == 0:
+            if pulid_num_zero == 0:
                 id_key = self.id_to_k(id_embedding).to(query.dtype)
                 id_value = self.id_to_v(id_embedding).to(query.dtype)
             else:
                 zero_tensor = torch.zeros(
-                    (id_embedding.size(0), NUM_ZERO, id_embedding.size(-1)),
+                    (id_embedding.size(0), pulid_num_zero, id_embedding.size(-1)),
                     dtype=id_embedding.dtype,
                     device=id_embedding.device,
                 )
@@ -197,9 +206,9 @@ class PuLIDAttnProcessor(torch.nn.Module):
             id_hidden_states = id_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
             id_hidden_states = id_hidden_states.to(query.dtype)
 
-            if not ORTHO and not ORTHO_v2:
+            if pulid_ortho == 'v1':
                 hidden_states = hidden_states + id_scale * id_hidden_states
-            elif ORTHO_v2:
+            elif pulid_ortho == 'v2':
                 orig_dtype = hidden_states.dtype
                 hidden_states = hidden_states.to(torch.float32)
                 id_hidden_states = id_hidden_states.to(torch.float32)

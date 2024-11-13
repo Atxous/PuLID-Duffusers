@@ -180,35 +180,6 @@ class PuLID(FaceEncoder):
                 self.ca_layers.load_state_dict(state_dict=state_dict[module], strict=True)
             else:
                 getattr(self, module).load_state_dict(state_dict=state_dict[module], strict=True)
-
-
-    def set_mode(self, mode: str):
-        if mode == 'fidelity':
-            attention.NUM_ZERO = 8
-            attention.ORTHO = False
-            attention.ORTHO_v2 = True
-        elif mode == 'extremely style':
-            attention.NUM_ZERO = 16
-            attention.ORTHO = True
-            attention.ORTHO_v2 = False
-        else:
-            raise ValueError("Unsupported pulid mode. Use 'fidelity' or 'extremely style'.")
-        
-    def set_editability(editability: int):
-        attention.NUM_ZERO = editability
-    
-    def set_ortho(ortho: str):
-        if ortho == 'v1':
-            attention.ORTHO = True
-            attention.ORTHO_v2 = False
-        elif ortho == 'v2':
-            attention.ORTHO = False
-            attention.ORTHO_v2 = True
-        elif ortho == 'off':
-            attention.ORTHO = False
-            attention.ORTHO_v2 = False
-        else:
-            raise ValueError("Unsupported pulid ortho. Use 'v1', 'v2' or 'off'.")
  
     def to(self, device: str):
         super().to(device)

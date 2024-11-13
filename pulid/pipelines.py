@@ -53,7 +53,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
         def __call__(self, *args,
             id_image = None,
             id_scale: float = 1,
-            pulid_ortho: str = "off",
+            pulid_ortho: str = None,
             pulid_editability: int = 16,
             pulid_mode:str = None,
             **kwargs
@@ -61,15 +61,16 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
             pulid_cross_attention_kwargs = {}
             cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
 
-            if not pulid_mode == None:
-                self.pulid.set_mode(pulid_mode)
-            else:
-                self.pulid.set_editability(pulid_editability)
-                self.pulid.set_ortho(pulid_ortho)
 
             if not id_image == None:
                 id_embedding = self.pulid(id_image)
-                pulid_cross_attention_kwargs = { 'id_embedding': id_embedding, 'id_scale': id_scale }
+                pulid_cross_attention_kwargs = {
+                    'id_embedding': id_embedding,
+                    'id_scale': id_scale,
+                    'pulid_mode': pulid_mode,
+                    'pulid_num_zero': pulid_editability,
+                    'pulid_ortho': pulid_ortho
+                }
 
             return super().__call__(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs )
         

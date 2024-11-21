@@ -175,11 +175,11 @@ class PuLID(FaceEncoder):
         state_dict = state_dict_extract_names(state_dict)  
         for module in state_dict:
             if module == "id_adapter" or module == "pulid_encoder":
-                self.id_encoder.load_state_dict(state_dict=state_dict[module], strict=True)
+                self.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
             elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                self.ca_layers.load_state_dict(state_dict=state_dict[module], strict=True)
+                self.ca_layers.load_state_dict(state_dict=state_dict[module], strict=False)
             else:
-                getattr(self, module).load_state_dict(state_dict=state_dict[module], strict=True)
+                getattr(self, module).load_state_dict(state_dict=state_dict[module], strict=False)
  
     def to(self, device: str):
         super().to(device)
@@ -188,8 +188,13 @@ class PuLID(FaceEncoder):
 
 def hack_unet_ca_layers(unet):
     id_adapter_attn_procs = {}
-    for name, _ in unet.attn_processors.items():
+    for name, processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+
+        if isinstance(processor, (attention.PuLIDAttnProcessor, attention.AttnProcessor)):
+            id_adapter_attn_procs[name] = processor
+            continue
+
         if name.startswith("mid_block"):
             hidden_size = unet.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -202,6 +207,7 @@ def hack_unet_ca_layers(unet):
             id_adapter_attn_procs[name] = attention.PuLIDAttnProcessor(
                 hidden_size=hidden_size,
                 cross_attention_dim=cross_attention_dim,
+                original_attn_processor=processor
             ).to(unet.device)
         else:
             id_adapter_attn_procs[name] = attention.AttnProcessor()

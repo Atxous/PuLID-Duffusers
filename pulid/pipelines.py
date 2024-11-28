@@ -1,6 +1,6 @@
-from .core import PuLID, hack_unet_ca_layers
+from .core import PuLIDEncoder, hack_unet, get_unet_attn_layers
+from .utils import load_file_weights, state_dict_extract_names
 import torch
-from .encoders import IDEncoder, IDFormer
 from .attention_processors import PuLIDAttnProcessor
 from diffusers import (
     DiffusionPipeline,
@@ -26,36 +26,37 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
     class PuLIDPipeline(pipeline_constructor):
 
         def load_pulid(self, 
-            weights_or_pulid: PuLID | str | Dict[str, torch.Tensor],
-            id_encoder: IDEncoder | IDFormer = None,
+            weights: str | Dict[str, torch.Tensor],
+            pulid_encoder: PuLIDEncoder = None,
             use_id_former: bool = True
         ):
-            is_pulid_instance = isinstance(weights_or_pulid, PuLID)
+            self.unet = hack_unet(self.unet)
 
-            if is_pulid_instance:
-                self.pulid = PuLID(
-                    id_encoder=weights_or_pulid.id_encoder,
-                    features_extractor=weights_or_pulid.features_extractor,
-                    ca_layers=hack_unet_ca_layers(self.unet)
-                )
-                self.pulid.ca_layers.load_state_dict(torch.nn.ModuleList(self.unet.attn_processors.values()).state_dict())
-            else:
-                if not hasattr(self, "pulid"):
-                    self.pulid = PuLID(id_encoder=id_encoder, use_id_former=use_id_former, ca_layers=hack_unet_ca_layers(self.unet))
-                self.pulid.load_weights(weights_or_pulid)
-            
-            self.pulid.to(self.device)
+            pulid_encoder = PuLIDEncoder(use_id_former=use_id_former) if pulid_encoder is None else pulid_encoder
+            pulid_encoder.to(self.device)
+            self.pulid_encoder = pulid_encoder
+
+            state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
+            state_dict = state_dict_extract_names(state_dict)  
+            for module in state_dict:
+                if module == "id_adapter" or module == "pulid_encoder":
+                    self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
+                elif module == "id_adapter_attn_layers" or module == "pulid_ca":
+                    pulid_attn_layers = get_unet_attn_layers(self.unet)
+                    pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
+
 
         def to(self, device: str):
             super().to(device)
-            self.pulid.to(device)
+            if hasattr(self, "pulid_encoder"):
+                self.pulid_encoder.to(device)
         
         @classmethod
         @wraps(pipeline_constructor.from_pipe)
         def from_pipe(cls, pipeline, **kwargs):
             pipe = super().from_pipe(pipeline, **kwargs)
             if isinstance(pipeline, PuLIDPipeline):
-                if hasattr(pipeline, "pulid"): pipe.load_pulid(pipeline.pulid)
+                if hasattr(pipeline, "pulid_encoder"): pipe.pulid_encoder(pipeline.pulid_encoder)
             else: pipe = cls(**pipe.components)
             return pipe
         
@@ -73,7 +74,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
 
 
             if not id_image == None:
-                id_embedding = self.pulid(id_image)
+                id_embedding = self.pulid_encoder(id_image)
                 pulid_cross_attention_kwargs = {
                     'id_embedding': id_embedding,
                     'id_scale': id_scale,
@@ -124,14 +125,14 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                 if isinstance(
                     attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
                 ) or (
-                    isinstance(attn_processor, PuLIDAttnProcessor) and isinstance(attn_processor.original_processor, (
+                    isinstance(attn_processor, PuLIDAttnProcessor) and isinstance(attn_processor.original_attn_processor, (
                         IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
                     )
                 ): 
-                    attn_processor = attn_processor.original_processor if isinstance(
+                    attn_processor = attn_processor.original_attn_processor if isinstance(
                         attn_processor, PuLIDAttnProcessor
                     ) and isinstance(
-                        attn_processor.original_processor, (
+                        attn_processor.original_attn_processor, (
                             IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0
                         )
                     ) else attn_processor

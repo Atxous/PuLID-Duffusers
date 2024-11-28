@@ -128,7 +128,7 @@ class PuLIDFeaturesExtractor():
         self.clip_vision_model.to(device)
 
 
-class FaceEncoder:
+class PuLIDEncoder:
     def __init__(self, 
         id_encoder: IDEncoder | IDFormer = None,
         features_extractor: PuLIDFeaturesExtractor = None,
@@ -164,29 +164,8 @@ class FaceEncoder:
                 self.id_encoder.load_state_dict(state_dict[module], strict=True)
 
 
-class PuLID(FaceEncoder):
-    def __init__(self, ca_layers: torch.nn.Module, id_encoder: Optional[IDEncoder | IDFormer] = None, features_extractor: PuLIDFeaturesExtractor = None, use_id_former: bool = True):
-        super().__init__(id_encoder, features_extractor=features_extractor, use_id_former=use_id_former)
-        self.ca_layers = ca_layers
-    
 
-    def load_weights(self, weights: str | Dict[str, torch.Tensor]):
-        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
-        state_dict = state_dict_extract_names(state_dict)  
-        for module in state_dict:
-            if module == "id_adapter" or module == "pulid_encoder":
-                self.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
-            elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                self.ca_layers.load_state_dict(state_dict=state_dict[module], strict=False)
-            else:
-                getattr(self, module).load_state_dict(state_dict=state_dict[module], strict=False)
- 
-    def to(self, device: str):
-        super().to(device)
-        self.ca_layers.to(device)
-
-
-def hack_unet_ca_layers(unet):
+def hack_unet(unet):
     id_adapter_attn_procs = {}
     for name, processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
@@ -212,10 +191,10 @@ def hack_unet_ca_layers(unet):
         else:
             id_adapter_attn_procs[name] = attention_processors.AttnProcessor()
     unet.set_attn_processor(id_adapter_attn_procs)
+    return unet
+
+
+def get_unet_attn_layers(unet):
     return torch.nn.ModuleList(unet.attn_processors.values())
 
-
-def get_unet_ca_layers(unet):
-    return torch.nn.ModuleList(unet.attn_processors.values())
-
-__all__ = ["PuLID", "PuLIDFeaturesExtractor", "FaceEncoder", "IDEncoder", "IDFormer", "hack_unet_ca_layers", "get_unet_ca_layers"]
+__all__ = ["PuLIDFeaturesExtractor", "PuLIDEncoder", "IDEncoder", "IDFormer", "hack_unet", "get_unet_attn_layers"]

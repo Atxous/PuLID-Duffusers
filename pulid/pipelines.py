@@ -1,7 +1,7 @@
 from .core import PuLID, hack_unet_ca_layers
 import torch
 from .encoders import IDEncoder, IDFormer
-from .attention import PuLIDAttnProcessor
+from .attention_processors import PuLIDAttnProcessor
 from diffusers import (
     DiffusionPipeline,
     StableDiffusionXLPipeline,

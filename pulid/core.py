@@ -1,5 +1,5 @@
 from .encoders import IDEncoder, IDFormer
-from . import attention
+from . import attention_processors
 from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
 import torch
@@ -191,7 +191,7 @@ def hack_unet_ca_layers(unet):
     for name, processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
 
-        if isinstance(processor, (attention.PuLIDAttnProcessor, attention.AttnProcessor)):
+        if isinstance(processor, (attention_processors.PuLIDAttnProcessor, attention_processors.AttnProcessor)):
             id_adapter_attn_procs[name] = processor
             continue
 
@@ -204,13 +204,13 @@ def hack_unet_ca_layers(unet):
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
         if cross_attention_dim is not None:
-            id_adapter_attn_procs[name] = attention.PuLIDAttnProcessor(
+            id_adapter_attn_procs[name] = attention_processors.PuLIDAttnProcessor(
                 hidden_size=hidden_size,
                 cross_attention_dim=cross_attention_dim,
                 original_attn_processor=processor
             ).to(unet.device)
         else:
-            id_adapter_attn_procs[name] = attention.AttnProcessor()
+            id_adapter_attn_procs[name] = attention_processors.AttnProcessor()
     unet.set_attn_processor(id_adapter_attn_procs)
     return torch.nn.ModuleList(unet.attn_processors.values())
 

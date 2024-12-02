@@ -11,7 +11,6 @@ from transformers import PretrainedConfig
 from typing import Dict
 import torch.nn.functional as F
 
-from attention_processors import PuLIDAttnProcessor
 
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.utils import (
@@ -21,11 +20,10 @@ from diffusers.utils import (
 )
 from diffusers import DiffusionPipeline
 
-from typing import Type, Dict
+from typing import Type, Dict, get_type_hints
 from functools import wraps
 from .core import PuLIDEncoder, hack_unet, get_unet_attn_layers
-from .utils import load_file_weights, state_dict_extract_names
-from .attention_processors import PuLIDAttnProcessor
+from .attention_processors import PuLIDAttnProcessor, AttnProcessor
 from diffusers.loaders.unet_loader_utils import  _maybe_expand_lora_scales
 from diffusers.models.attention_processor import  (
         IPAdapterAttnProcessor,
@@ -212,10 +210,104 @@ def state_dict_extract_names(state_dict: Dict[str, torch.Tensor]) -> dict:
     return state_dict_dict
 
 
+def convert_pulid_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
+        from diffusers.models.attention_processor import (
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0
+        )
+
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
+
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        # set ip-adapter cross-attention processors & load state_dict
+        attn_procs = {}
+        key_id = 1
+        for name in self.attn_processors.keys():
+            attn_proc = attn_procs[name].original_attn_procs if isinstance(
+                        attn_procs[name], PuLIDAttnProcessor
+                    ) else attn_procs[name]
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = self.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(self.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = self.config.block_out_channels[block_id]
+
+            if cross_attention_dim is None or "motion_modules" in name:
+                attn_processor_class = self.attn_processors[name].__class__
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    IPAdapterAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else IPAdapterAttnProcessor
+                )
+                num_image_text_embeds = []
+                for state_dict in state_dicts:
+                    if "proj.weight" in state_dict["image_proj"]:
+                        # IP-Adapter
+                        num_image_text_embeds += [4]
+                    elif "proj.3.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Full Face
+                        num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "perceiver_resampler.proj_in.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID Plus
+                        num_image_text_embeds += [4]
+                    elif "norm.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID
+                        num_image_text_embeds += [4]
+                    else:
+                        # IP-Adapter Plus
+                        num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
+
+                attn_proc = attn_processor_class(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=1.0,
+                    num_tokens=num_image_text_embeds,
+                )
+
+                value_dict = {}
+                for i, state_dict in enumerate(state_dicts):
+                    value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
+                    value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
+
+                if not low_cpu_mem_usage:
+                    attn_proc.load_state_dict(value_dict)
+                else:
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
+                    load_model_dict_into_meta(attn_proc, value_dict, device=device, dtype=dtype)
+
+                key_id += 2
+
+        return attn_procs
+
 
 def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
     class PuLIDPipeline(pipeline_constructor):
+
+        pulid_encoder: PuLIDEncoder = None
 
         def load_pulid(self, 
             weights: str | Dict[str, torch.Tensor],
@@ -343,6 +435,60 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                         else:
                             attn_processor.scale[i] = scale_config
 
+        def unload_ip_adapter(self):
+            """
+            Unloads the IP Adapter weights
 
+            Examples:
+
+            ```python
+            >>> # Assuming `pipeline` is already loaded with the IP Adapter weights.
+            >>> pipeline.unload_ip_adapter()
+            >>> ...
+            ```
+            """
+            # remove CLIP image encoder
+            if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is not None:
+                self.image_encoder = None
+                self.register_to_config(image_encoder=[None, None])
+
+            # remove feature extractor only when safety_checker is None as safety_checker uses
+            # the feature_extractor later
+            if not hasattr(self, "safety_checker"):
+                if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+                    self.feature_extractor = None
+                    self.register_to_config(feature_extractor=[None, None])
+
+            # remove hidden encoder
+            self.unet.encoder_hid_proj = None
+            self.unet.config.encoder_hid_dim_type = None
+
+            # Kolors: restore `encoder_hid_proj` with `text_encoder_hid_proj`
+            if hasattr(self.unet, "text_encoder_hid_proj") and self.unet.text_encoder_hid_proj is not None:
+                self.unet.encoder_hid_proj = self.unet.text_encoder_hid_proj
+                self.unet.text_encoder_hid_proj = None
+                self.unet.config.encoder_hid_dim_type = "text_proj"
+
+            # restore original Unet attention processors layers
+            attn_procs = {}
+            for name, attn_processor in self.unet.attn_processors.items():
+
+                if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                    attn_procs[name] = AttnProcessor
+                elif isinstance(attn_processor, PuLIDAttnProcessor) and isinstance(attn_processor.original_attn_processor, (
+                        IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)
+                    ):
+                    attn_processor.original_attn_processor = AttnProcessor
+                    attn_procs[name] = attn_processor
+
+            self.unet.set_attn_processor(attn_procs)
+
+    PuLIDPipeline.__call__.__annotations__ = {**get_type_hints(pipeline_constructor.__call__), **{
+        'id_image': None,
+        'id_scale': float,
+        'pulid_ortho': str,
+        'pulid_editability': int,
+        'pulid_mode': str,
+    }}
         
     return PuLIDPipeline

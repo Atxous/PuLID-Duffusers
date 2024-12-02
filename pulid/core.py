@@ -1,6 +1,6 @@
 from .encoders import IDEncoder, IDFormer
 from . import attention_processors
-from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
+from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names, convert_pulid_ip_adapter_attn_to_diffusers
 
 import torch
 import gc
@@ -20,7 +20,9 @@ from eva_clip import create_model_and_transforms
 from eva_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 
 
-from typing import Dict, Optional
+from typing import Dict
+
+from types import MethodType
 
 
 class PuLIDFeaturesExtractor():
@@ -165,6 +167,7 @@ class PuLIDEncoder:
 
 
 
+
 def hack_unet(unet):
     id_adapter_attn_procs = {}
     for name, processor in unet.attn_processors.items():
@@ -191,6 +194,8 @@ def hack_unet(unet):
         else:
             id_adapter_attn_procs[name] = attention_processors.AttnProcessor()
     unet.set_attn_processor(id_adapter_attn_procs)
+    if hasattr(unet, "_convert_ip_adapter_attn_to_diffusers"):
+        unet._convert_ip_adapter_attn_to_diffusers = MethodType(convert_pulid_ip_adapter_attn_to_diffusers, unet.__class__)
     return unet
 
 

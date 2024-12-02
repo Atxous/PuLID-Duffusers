@@ -195,7 +195,7 @@ def hack_unet(unet):
             id_adapter_attn_procs[name] = attention_processors.AttnProcessor()
     unet.set_attn_processor(id_adapter_attn_procs)
     if hasattr(unet, "_convert_ip_adapter_attn_to_diffusers"):
-        unet._convert_ip_adapter_attn_to_diffusers = MethodType(convert_pulid_ip_adapter_attn_to_diffusers, unet.__class__)
+        unet._convert_ip_adapter_attn_to_diffusers = MethodType(convert_pulid_ip_adapter_attn_to_diffusers, unet)
     return unet
 
 

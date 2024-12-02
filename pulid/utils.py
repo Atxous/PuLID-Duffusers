@@ -229,10 +229,7 @@ def convert_pulid_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_us
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
-        for name in self.attn_processors.keys():
-            attn_proc = attn_procs[name].original_attn_procs if isinstance(
-                        attn_procs[name], PuLIDAttnProcessor
-                    ) else attn_procs[name]
+        for name, attn_proc in self.attn_processors.items():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = self.config.block_out_channels[-1]
@@ -270,12 +267,18 @@ def convert_pulid_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_us
                         # IP-Adapter Plus
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
-                attn_proc = attn_processor_class(
+
+
+                ip_adapter_attn_proc = attn_processor_class(
                     hidden_size=hidden_size,
                     cross_attention_dim=cross_attention_dim,
                     scale=1.0,
                     num_tokens=num_image_text_embeds,
                 )
+
+                if isinstance(attn_proc, PuLIDAttnProcessor):
+                    attn_proc.original_attn_processor = ip_adapter_attn_proc
+                else: attn_proc = ip_adapter_attn_proc
 
                 value_dict = {}
                 for i, state_dict in enumerate(state_dicts):
@@ -290,6 +293,8 @@ def convert_pulid_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_us
                     load_model_dict_into_meta(attn_proc, value_dict, device=device, dtype=dtype)
 
                 key_id += 2
+
+                attn_procs[name] = attn_proc
 
         return attn_procs
 

@@ -71,7 +71,7 @@ def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[D
         def from_pipe(cls, pipeline, **kwargs):
             pipe = super().from_pipe(pipeline, **kwargs)
             if isinstance(pipeline, PuLIDPipeline):
-                if hasattr(pipeline, "pulid_encoder"): pipe.pulid_encoder(pipeline.pulid_encoder)
+                pipe.pulid_encoder = pipeline.pulid_encoder
             else: pipe = cls(**pipe.components)
             return pipe
         

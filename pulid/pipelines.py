@@ -23,46 +23,49 @@ from .attention_processors import PuLIDAttnProcessor, AttnProcessor
 from .utils import load_file_weights, state_dict_extract_names
 
 
-def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
+class PuLIDPipeline:
+    pulid_encoder: PuLIDEncoder = None
+    _pulid_timestep_to_start: int = None
+
+    def _set_pulid_attn_processors_avalible(self, avalible: bool):
+        for attn_processor in self.unet.attn_processors.values():
+            if isinstance(attn_processor, PuLIDAttnProcessor):
+                attn_processor.is_pulid_avalible = avalible
+
+    def load_pulid(self, 
+        weights: str | Dict[str, torch.Tensor],
+        pulid_encoder: PuLIDEncoder = None,
+        use_id_former: bool = True
+    ):
+        self._convert_to_pulid()
+        pulid_encoder = PuLIDEncoder(use_id_former=use_id_former) if pulid_encoder is None else pulid_encoder
+        pulid_encoder.to(self.device)
+        self.pulid_encoder = pulid_encoder
+        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
+        state_dict = state_dict_extract_names(state_dict)  
+        for module in state_dict:
+            if module == "id_adapter" or module == "pulid_encoder":
+                self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
+            elif module == "id_adapter_attn_layers" or module == "pulid_ca":
+                pulid_attn_layers = self._get_attn_layers()
+                pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
+
+    def to(self, device: str):
+        super().to(device)
+        if hasattr(self, "pulid_encoder"):
+            self.pulid_encoder.to(device)
+
+
+def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
-    class PuLIDPipeline(pipeline_constructor):
+    class StableDiffusionPuLIDPipeline(pipeline_constructor, PuLIDPipeline):
 
-        pulid_encoder: PuLIDEncoder = None
-        _pulid_timestep_to_start: int = None
-
-        def _set_pulid_attn_processors_avalible(self, avalible: bool):
-            for attn_processor in self.unet.attn_processors.values():
-                if isinstance(attn_processor, PuLIDAttnProcessor):
-                    attn_processor.is_pulid_avalible = avalible
-
-
-
-        def load_pulid(self, 
-            weights: str | Dict[str, torch.Tensor],
-            pulid_encoder: PuLIDEncoder = None,
-            use_id_former: bool = True
-        ):
+        def _convert_to_pulid(self):
             self.unet = hack_unet(self.unet)
 
-            pulid_encoder = PuLIDEncoder(use_id_former=use_id_former) if pulid_encoder is None else pulid_encoder
-            pulid_encoder.to(self.device)
-            self.pulid_encoder = pulid_encoder
-
-            state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
-            state_dict = state_dict_extract_names(state_dict)  
-            for module in state_dict:
-                if module == "id_adapter" or module == "pulid_encoder":
-                    self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
-                elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                    pulid_attn_layers = get_unet_attn_layers(self.unet)
-                    pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
-
-
-        def to(self, device: str):
-            super().to(device)
-            if hasattr(self, "pulid_encoder"):
-                self.pulid_encoder.to(device)
-        
+        def _get_attn_layers(self):
+            return torch.nn.ModuleList(self.unet.attn_processors.values())
+  
         @classmethod
         @wraps(pipeline_constructor.from_pipe)
         def from_pipe(cls, pipeline, **kwargs):
@@ -195,7 +198,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
 
             self.unet.set_attn_processor(attn_procs)
 
-    PuLIDPipeline.__call__.__annotations__ = {**get_type_hints(pipeline_constructor.__call__), **{
+    StableDiffusionPuLIDPipeline.__call__.__annotations__ = {**get_type_hints(pipeline_constructor.__call__), **{
         'id_image': None,
         'id_scale': float,
         'pulid_ortho': str,
@@ -204,17 +207,17 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
         'pulid_timestep_to_start': int,
     }}
         
-    return PuLIDPipeline
+    return StableDiffusionPuLIDPipeline
 
 
 
 # SDXL Pipelines
-class StableDiffusionXLPuLIDPipeline(pipeline_creator(StableDiffusionXLPipeline)): pass
-class StableDiffusionXLPuLIDImg2ImgPipeline(pipeline_creator(StableDiffusionXLImg2ImgPipeline)): pass
-class StableDiffusionXLPuLIDInpaintPipeline(pipeline_creator(StableDiffusionXLInpaintPipeline)): pass
-class StableDiffusionXLPuLIDControlNetPipeline(pipeline_creator(StableDiffusionXLControlNetPipeline)): pass
-class StableDiffusionXLPuLIDControlNetImg2ImgPipeline(pipeline_creator(StableDiffusionXLControlNetImg2ImgPipeline)): pass
-class StableDiffusionXLPuLIDControlNetInpaintPipeline(pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)): pass
+class StableDiffusionXLPuLIDPipeline(sd_pipeline_creator(StableDiffusionXLPipeline)): pass
+class StableDiffusionXLPuLIDImg2ImgPipeline(sd_pipeline_creator(StableDiffusionXLImg2ImgPipeline)): pass
+class StableDiffusionXLPuLIDInpaintPipeline(sd_pipeline_creator(StableDiffusionXLInpaintPipeline)): pass
+class StableDiffusionXLPuLIDControlNetPipeline(sd_pipeline_creator(StableDiffusionXLControlNetPipeline)): pass
+class StableDiffusionXLPuLIDControlNetImg2ImgPipeline(sd_pipeline_creator(StableDiffusionXLControlNetImg2ImgPipeline)): pass
+class StableDiffusionXLPuLIDControlNetInpaintPipeline(sd_pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)): pass
 
 __all__ = [
     "StableDiffusionXLPuLIDPipeline",

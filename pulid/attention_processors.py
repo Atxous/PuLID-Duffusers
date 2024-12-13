@@ -113,7 +113,7 @@ class PuLIDAttnProcessor(torch.nn.Module):
 
         self.id_to_k = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         self.id_to_v = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-
+        self.is_pulid_avalible = True
         self.hidden_size = hidden_size
 
     def __call__(
@@ -140,7 +140,7 @@ class PuLIDAttnProcessor(torch.nn.Module):
         )
 
         # for id embedding
-        if id_embedding is not None:
+        if id_embedding is not None and id_scale > 0 and self.is_pulid_avalible:
             if pulid_mode is not None:
                 if pulid_mode == 'fidelity':
                     pulid_num_zero = 8

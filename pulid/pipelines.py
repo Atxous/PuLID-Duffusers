@@ -28,6 +28,14 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
     class PuLIDPipeline(pipeline_constructor):
 
         pulid_encoder: PuLIDEncoder = None
+        _pulid_timestep_to_start: int = None
+
+        def _set_pulid_attn_processors_avalible(self, avalible: bool):
+            for attn_processor in self.unet.attn_processors.values():
+                if isinstance(attn_processor, PuLIDAttnProcessor):
+                    attn_processor.is_pulid_avalible = avalible
+
+
 
         def load_pulid(self, 
             weights: str | Dict[str, torch.Tensor],
@@ -71,13 +79,30 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
             pulid_ortho: str = None,
             pulid_editability: int = 16,
             pulid_mode:str = None,
+            pulid_timestep_to_start: int = 2,
             **kwargs
         ):
             pulid_cross_attention_kwargs = {}
             cross_attention_kwargs = kwargs.pop("cross_attention_kwargs", {})
+            user_step_callback = kwargs.pop("callback_on_step_end", None)
+            step_callback = None
 
+            if not id_image == None: 
+                if pulid_timestep_to_start > 0:
+                    self._set_pulid_attn_processors_avalible(False)
+                    def pulid_step_callback(self, step, timestep, callback_kwargs):
+                        if pulid_timestep_to_start >=  step - 1:
+                            self._set_pulid_attn_processors_avalible(True)
 
-            if not id_image == None:
+                        if not user_step_callback == None:
+                            return user_step_callback(self, step, timestep, callback_kwargs)
+                        else: return callback_kwargs
+
+                    step_callback = pulid_step_callback
+                else:
+                    self._set_pulid_attn_processors_avalible(True)
+                    step_callback = user_step_callback
+
                 id_embedding = self.pulid_encoder(id_image)
                 pulid_cross_attention_kwargs = {
                     'id_embedding': id_embedding,
@@ -87,7 +112,12 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
                     'pulid_ortho': pulid_ortho
                 }
 
-            return super().__call__(*args, cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs}, **kwargs )
+            return super().__call__(
+                *args,
+                cross_attention_kwargs={**pulid_cross_attention_kwargs, **cross_attention_kwargs},
+                callback_on_step_end=step_callback,
+                **kwargs
+            )
         
         @wraps(pipeline_constructor.set_ip_adapter_scale)
         def set_ip_adapter_scale(self, scale):
@@ -171,6 +201,7 @@ def pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[Diff
         'pulid_ortho': str,
         'pulid_editability': int,
         'pulid_mode': str,
+        'pulid_timestep_to_start': int,
     }}
         
     return PuLIDPipeline

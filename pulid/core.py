@@ -1,6 +1,6 @@
 from .encoders import IDEncoder, IDFormer
 from . import attention_processors
-from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names, convert_pulid_ip_adapter_attn_to_diffusers
+from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
 import torch
 import gc
@@ -13,6 +13,20 @@ from huggingface_hub import snapshot_download
 from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
+
+from diffusers import FluxTransformer2DModel
+
+from diffusers.utils import (
+    is_accelerate_available,
+    is_torch_version,
+    logging,
+)
+from diffusers.models.modeling_utils import load_model_dict_into_meta
+
+import torch.nn.functional as F
+
+
+logger = logging.get_logger(__name__)
 
 from PIL import Image
 
@@ -199,7 +213,129 @@ def hack_unet(unet):
     return unet
 
 
-def get_unet_attn_layers(unet):
-    return torch.nn.ModuleList(unet.attn_processors.values())
+def hack_flux_transformer(transformer: FluxTransformer2DModel, pulid_blocks_interval=2, pulid_single_blocks_interval=4):
+    pulid_attn_processors = {}
+    for i, attn_processor in enumerate(transformer.attn_processors.items()):
+        name, processor = attn_processor
+        if name.startswith("transformer_blocks") and i % pulid_blocks_interval == 0:
+            pulid_attn_processors[name] = attention_processors.PuLIDCAAttnProcessor(original_attn_processor=processor)
+            pulid_attn_processors[name].pulid_ca.to(transformer.device)
+            pulid_attn_processors[name].pulid_ca.to(transformer.dtype)
+        elif name.startswith("single_transformer_blocks") and i % pulid_single_blocks_interval == 0:
+            pulid_attn_processors[name] = attention_processors.PuLIDCAAttnProcessor(original_attn_processor=processor)
+            pulid_attn_processors[name].pulid_ca.to(transformer.device)
+            pulid_attn_processors[name].pulid_ca.to(transformer.dtype)
+        else:
+            pulid_attn_processors[name] = processor
 
-__all__ = ["PuLIDFeaturesExtractor", "PuLIDEncoder", "IDEncoder", "IDFormer", "hack_unet", "get_unet_attn_layers"]
+    transformer.set_attn_processor(pulid_attn_processors)
+    return transformer
+
+
+def convert_pulid_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
+        from diffusers.models.attention_processor import (
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0
+        )
+
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
+
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        # set ip-adapter cross-attention processors & load state_dict
+        attn_procs = {}
+        key_id = 1
+        for name, attn_proc in self.attn_processors.items():
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = self.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(self.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = self.config.block_out_channels[block_id]
+
+            if cross_attention_dim is None or "motion_modules" in name:
+                attn_processor_class = self.attn_processors[name].__class__
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    attention_processors.IPAdapterAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else attention_processors.IPAdapterAttnProcessor
+                )
+                num_image_text_embeds = []
+                for state_dict in state_dicts:
+                    if "proj.weight" in state_dict["image_proj"]:
+                        # IP-Adapter
+                        num_image_text_embeds += [4]
+                    elif "proj.3.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Full Face
+                        num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "perceiver_resampler.proj_in.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID Plus
+                        num_image_text_embeds += [4]
+                    elif "norm.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID
+                        num_image_text_embeds += [4]
+                    else:
+                        # IP-Adapter Plus
+                        num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
+
+
+
+                ip_adapter_attn_proc = attn_processor_class(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=1.0,
+                    num_tokens=num_image_text_embeds,
+                )
+
+                if isinstance(attn_proc, attention_processors.PuLIDAttnProcessor):
+                    attn_proc.original_attn_processor = ip_adapter_attn_proc
+                else: attn_proc = ip_adapter_attn_proc
+
+                value_dict = {}
+                for i, state_dict in enumerate(state_dicts):
+                    value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
+                    value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
+
+                if not low_cpu_mem_usage:
+                    attn_proc.load_state_dict(value_dict)
+                else:
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
+                    load_model_dict_into_meta(attn_proc, value_dict, device=device, dtype=dtype)
+
+                key_id += 2
+
+                attn_procs[name] = attn_proc
+
+        return attn_procs
+
+
+
+__all__ = [
+    "PuLIDFeaturesExtractor",
+    "PuLIDEncoder",
+    "IDEncoder",
+    "IDFormer",
+    "hack_unet",
+    "hack_flux_transformer",
+]

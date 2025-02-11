@@ -30,7 +30,7 @@ from typing import Type, Dict, get_type_hints
 from functools import wraps
 
 from .core import PuLIDEncoder, hack_unet, hack_flux_transformer
-from .attention_processors import PuLIDAttnProcessor, AttnProcessor, PuLIDCAAttnProcessor
+from .attention_processors import PuLIDAttnProcessor, AttnProcessor
 from .utils import load_file_weights, state_dict_extract_names
 
 
@@ -40,7 +40,7 @@ class PuLIDPipeline:
 
     def _set_pulid_attn_processors_avalible(self, avalible: bool):
         for attn_processor in self._get_attn_layers():
-            if isinstance(attn_processor, PuLIDAttnProcessor) or isinstance(attn_processor, PuLIDCAAttnProcessor):
+            if isinstance(attn_processor, PuLIDAttnProcessor):
                 attn_processor.is_pulid_avalible = avalible
 
     def load_pulid(self: Type[DiffusionPipeline], 
@@ -237,16 +237,8 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
         def _convert_to_pulid(self):
             self.transformer = hack_flux_transformer(self.transformer)
 
-        def _get_attn_layers(self, pulid_blocks_interval=2, pulid_single_blocks_interval=4):
-            pulid_attn_processors = []
-            for i, attn_processor in enumerate(self.transformer.attn_processors.items()):
-                name, processor = attn_processor
-                if name.startswith("transformer_blocks") and i % pulid_blocks_interval == 0:
-                    pulid_attn_processors.append(processor.pulid_ca)
-                if name.startswith("single_transformer_blocks") and i % pulid_single_blocks_interval == 0:
-                    pulid_attn_processors.append(processor.pulid_ca)
-
-            return torch.nn.ModuleList(pulid_attn_processors)
+        def _get_attn_layers(self):
+            return self.transformer.pulid_ca
   
         @classmethod
         @wraps(pipeline_constructor.from_pipe)

@@ -247,51 +247,6 @@ class PuLIDAttnProcessor(torch.nn.Module):
             return original_hidden_states
 
 
-
-class PuLIDCAAttnProcessor(torch.nn.Module):
-    r"""
-    Attention processor for ID-Adapater for PyTorch 2.0.
-    Attention processor used typically in processing the SD3-like self-attention projections."""
-
-    def __init__(self, original_attn_processor):
-        super().__init__()
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("FluxAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-        
-        self.original_attn_processor = original_attn_processor
-        self.pulid_ca = PerceiverAttentionCA()
-        self.is_pulid_avalible = True
-        
-    def __call__(
-        self,
-        attn,
-        hidden_states: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        id_embedding=None,
-        id_scale=1.0,
-        **kwargs
-    ) -> torch.FloatTensor:
-        
-        original_hidden_states = self.original_attn_processor(
-            attn=attn,
-            hidden_states=hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            attention_mask=attention_mask,
-            image_rotary_emb=image_rotary_emb,
-            **kwargs
-        )
-
-        if id_embedding is not None and id_scale > 0 and self.is_pulid_avalible:
-            hidden_states = hidden_states + id_scale * self.pulid_ca(id_embedding, hidden_states)
-            if isinstance(original_hidden_states, tuple):
-               return (original_hidden_states[0] + hidden_states,) + original_hidden_states[1:]
-            else:
-                return original_hidden_states + hidden_states
-        else: return original_hidden_states
-
-
 class PerceiverAttentionCA(nn.Module):
     def __init__(self, *, dim=3072, dim_head=128, heads=16, kv_dim=2048):
         super().__init__()

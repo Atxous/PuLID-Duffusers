@@ -30,6 +30,11 @@ def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[D
 
         def _get_pulid_layers(self):
             return torch.nn.ModuleList(self.unet.attn_processors.values())
+        
+        def _set_pulid_avalible(self, avalible: bool):
+            for attn_processor in self._get_pulid_layers():
+                if isinstance(attn_processor, PuLIDAttnProcessor):
+                    attn_processor.is_pulid_avalible = avalible
   
         @classmethod
         @wraps(pipeline_constructor.from_pipe)
@@ -57,10 +62,10 @@ def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[D
 
             if not id_image == None: 
                 if pulid_timestep_to_start > 0:
-                    self._set_pulid_attn_processors_avalible(False)
+                    self._set_pulid_avalible(False)
                     def pulid_step_callback(self, step, timestep, callback_kwargs):
                         if pulid_timestep_to_start >=  step - 1:
-                            self._set_pulid_attn_processors_avalible(True)
+                            self._set_pulid_avalible(True)
 
                         if not user_step_callback == None:
                             return user_step_callback(self, step, timestep, callback_kwargs)
@@ -68,7 +73,7 @@ def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[D
 
                     step_callback = pulid_step_callback
                 else:
-                    self._set_pulid_attn_processors_avalible(True)
+                    self._set_pulid_avalible(True)
                     step_callback = user_step_callback
 
                 id_embedding = self.pulid_encoder(id_image)

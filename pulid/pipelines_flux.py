@@ -28,6 +28,9 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
 
         def _get_pulid_layers(self):
             return self.transformer.pulid_ca
+        
+        def _set_pulid_avalible(self, avalible: bool):
+            self.transformer.is_pulid_avalible = True
   
         @classmethod
         @wraps(pipeline_constructor.from_pipe)
@@ -55,10 +58,10 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
 
             if not id_image == None: 
                 if pulid_timestep_to_start > 0:
-                    self._set_pulid_attn_processors_avalible(False)
+                    self._set_pulid_avalible(False)
                     def pulid_step_callback(self, step, timestep, callback_kwargs):
                         if pulid_timestep_to_start >=  step - 1:
-                            self._set_pulid_attn_processors_avalible(True)
+                            self._set_pulid_avalible(True)
 
                         if not user_step_callback == None:
                             return user_step_callback(self, step, timestep, callback_kwargs)
@@ -66,7 +69,7 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
 
                     step_callback = pulid_step_callback
                 else:
-                    self._set_pulid_attn_processors_avalible(True)
+                    self._set_pulid_avalible(True)
                     step_callback = user_step_callback
 
                 id_embedding = self.pulid_encoder(id_image).to(self.dtype)

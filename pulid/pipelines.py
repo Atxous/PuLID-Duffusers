@@ -58,7 +58,7 @@ class PuLIDPipeline:
             if module == "id_adapter" or module == "pulid_encoder":
                 self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
             elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                pulid_attn_layers = self._get_attn_layers()
+                pulid_attn_layers = self._get_pulid_layers()
                 pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
 
     def to(self, device: str):
@@ -74,7 +74,7 @@ def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[D
         def _convert_to_pulid(self):
             self.unet = hack_unet(self.unet)
 
-        def _get_attn_layers(self):
+        def _get_pulid_layers(self):
             return torch.nn.ModuleList(self.unet.attn_processors.values())
   
         @classmethod
@@ -237,7 +237,7 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
         def _convert_to_pulid(self):
             self.transformer = hack_flux_transformer(self.transformer)
 
-        def _get_attn_layers(self):
+        def _get_pulid_layers(self):
             return self.transformer.pulid_ca
   
         @classmethod

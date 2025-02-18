@@ -1,4 +1,4 @@
-from .encoders import IDEncoder, IDFormer
+from .encoders import IDEncoder, IDFormer, PerceiverAttentionCA
 from . import attention_processors
 from .utils import img2tensor, tensor2img, to_gray, load_file_weights, state_dict_extract_names
 
@@ -14,7 +14,8 @@ from insightface.app import FaceAnalysis
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms.functional import normalize, resize
 
-from diffusers import FluxTransformer2DModel
+from typing import Type
+from diffusers import FluxTransformer2DModel, DiffusionPipeline
 
 from diffusers.utils import (
     is_accelerate_available,
@@ -321,7 +322,7 @@ def hack_flux_transformer(transformer: FluxTransformer2DModel, double_interval=2
     if 38 % single_interval != 0:
         num_ca += 1
     pulid_ca = torch.nn.ModuleList([
-        attention_processors.PerceiverAttentionCA().to(transformer.device, transformer.dtype) for _ in range(num_ca)
+        PerceiverAttentionCA().to(transformer.device, transformer.dtype) for _ in range(num_ca)
     ])
     transformer.pulid_ca = pulid_ca
     transformer.pulid_double_interval = double_interval
@@ -512,6 +513,38 @@ def pulid_flux_forward(
         return Transformer2DModelOutput(sample=output)
 
 
+
+class PuLIDPipeline:
+    pulid_encoder: PuLIDEncoder = None
+    _pulid_timestep_to_start: int = None
+
+    def _set_pulid_attn_processors_avalible(self, avalible: bool):
+        for attn_processor in self._get_pulid_layers():
+            if isinstance(attn_processor, attention_processors.PuLIDAttnProcessor):
+                attn_processor.is_pulid_avalible = avalible
+
+    def load_pulid(self: Type[DiffusionPipeline], 
+        weights: str | Dict[str, torch.Tensor],
+        pulid_encoder: PuLIDEncoder = None,
+        use_id_former: bool = True
+    ):
+        self._convert_to_pulid()
+        pulid_encoder = PuLIDEncoder(use_id_former=use_id_former) if pulid_encoder is None else pulid_encoder
+        pulid_encoder.to(self.device)
+        self.pulid_encoder = pulid_encoder
+        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
+        state_dict = state_dict_extract_names(state_dict)  
+        for module in state_dict:
+            if module == "id_adapter" or module == "pulid_encoder":
+                self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
+            elif module == "id_adapter_attn_layers" or module == "pulid_ca":
+                pulid_attn_layers = self._get_pulid_layers()
+                pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
+
+    def to(self, device: str):
+        super().to(device)
+        if hasattr(self, "pulid_encoder"):
+            self.pulid_encoder.to(device)
 
 
 

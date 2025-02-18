@@ -5,17 +5,6 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetInpaintPipeline,
-    FluxPipeline,
-    FluxImg2ImgPipeline,
-    FluxInpaintPipeline,
-    FluxControlNetInpaintPipeline,
-    FluxControlNetImg2ImgPipeline,
-    FluxControlNetPipeline,
-    FluxControlPipeline,
-    FluxControlImg2ImgPipeline,
-    FluxPriorReduxPipeline,
-    FluxFillPipeline,
-    FluxControlInpaintPipeline
 )
 
 from diffusers import DiffusionPipeline
@@ -26,46 +15,11 @@ from diffusers.models.attention_processor import  (
     )
 
 import torch
-from typing import Type, Dict, get_type_hints
+from typing import Type, get_type_hints
 from functools import wraps
 
-from .core import PuLIDEncoder, hack_unet, hack_flux_transformer
+from .core import hack_unet, PuLIDPipeline
 from .attention_processors import PuLIDAttnProcessor, AttnProcessor
-from .utils import load_file_weights, state_dict_extract_names
-
-
-class PuLIDPipeline:
-    pulid_encoder: PuLIDEncoder = None
-    _pulid_timestep_to_start: int = None
-
-    def _set_pulid_attn_processors_avalible(self, avalible: bool):
-        for attn_processor in self._get_attn_layers():
-            if isinstance(attn_processor, PuLIDAttnProcessor):
-                attn_processor.is_pulid_avalible = avalible
-
-    def load_pulid(self: Type[DiffusionPipeline], 
-        weights: str | Dict[str, torch.Tensor],
-        pulid_encoder: PuLIDEncoder = None,
-        use_id_former: bool = True
-    ):
-        self._convert_to_pulid()
-        pulid_encoder = PuLIDEncoder(use_id_former=use_id_former) if pulid_encoder is None else pulid_encoder
-        pulid_encoder.to(self.device)
-        self.pulid_encoder = pulid_encoder
-        state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
-        state_dict = state_dict_extract_names(state_dict)  
-        for module in state_dict:
-            if module == "id_adapter" or module == "pulid_encoder":
-                self.pulid_encoder.id_encoder.load_state_dict(state_dict=state_dict[module], strict=False)
-            elif module == "id_adapter_attn_layers" or module == "pulid_ca":
-                pulid_attn_layers = self._get_pulid_layers()
-                pulid_attn_layers.load_state_dict(state_dict=state_dict[module], strict=False)
-
-    def to(self, device: str):
-        super().to(device)
-        if hasattr(self, "pulid_encoder"):
-            self.pulid_encoder.to(device)
-
 
 def sd_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
     
@@ -230,100 +184,6 @@ class StableDiffusionXLPuLIDControlNetImg2ImgPipeline(sd_pipeline_creator(Stable
 class StableDiffusionXLPuLIDControlNetInpaintPipeline(sd_pipeline_creator(StableDiffusionXLControlNetInpaintPipeline)): pass
 
 
-def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type[DiffusionPipeline]:
-    
-    class FluxPuLIDPipeline(pipeline_constructor, PuLIDPipeline):
-
-        def _convert_to_pulid(self):
-            self.transformer = hack_flux_transformer(self.transformer)
-
-        def _get_pulid_layers(self):
-            return self.transformer.pulid_ca
-  
-        @classmethod
-        @wraps(pipeline_constructor.from_pipe)
-        def from_pipe(cls, pipeline, **kwargs):
-            pipe = super().from_pipe(pipeline, **kwargs)
-            if isinstance(pipeline, PuLIDPipeline):
-                pipe.pulid_encoder = pipeline.pulid_encoder
-            else: pipe = cls(**pipe.components)
-            return pipe
-        
-        @wraps(pipeline_constructor.__call__)
-        def __call__(self, *args,
-            id_image = None,
-            id_scale: float = 1,
-            #pulid_ortho: str = None,
-            #pulid_editability: int = 16,
-            #pulid_mode:str = None,
-            pulid_timestep_to_start: int = 2,
-            **kwargs
-        ):
-            pulid_joint_attention_kwargs = {}
-            joint_attention_kwargs = kwargs.pop("joint_attention_kwargs", {})
-            user_step_callback = kwargs.pop("callback_on_step_end", None)
-            step_callback = None
-
-            if not id_image == None: 
-                if pulid_timestep_to_start > 0:
-                    self._set_pulid_attn_processors_avalible(False)
-                    def pulid_step_callback(self, step, timestep, callback_kwargs):
-                        if pulid_timestep_to_start >=  step - 1:
-                            self._set_pulid_attn_processors_avalible(True)
-
-                        if not user_step_callback == None:
-                            return user_step_callback(self, step, timestep, callback_kwargs)
-                        else: return callback_kwargs
-
-                    step_callback = pulid_step_callback
-                else:
-                    self._set_pulid_attn_processors_avalible(True)
-                    step_callback = user_step_callback
-
-                id_embedding = self.pulid_encoder(id_image).to(self.dtype)
-                id_embedding = id_embedding[1:2]
-                pulid_joint_attention_kwargs = {
-                    'id_embedding': id_embedding,
-                    'id_scale': id_scale,
-                    #'pulid_mode': pulid_mode,
-                    #'pulid_num_zero': pulid_editability,
-                    #'pulid_ortho': pulid_ortho
-                }
-
-            return super().__call__(
-                *args,
-                joint_attention_kwargs={**pulid_joint_attention_kwargs, **joint_attention_kwargs},
-                callback_on_step_end=step_callback,
-                **kwargs
-            )
-        
-    FluxPuLIDPipeline.__call__.__annotations__ = {**get_type_hints(pipeline_constructor.__call__), **{
-        'id_image': None,
-        'id_scale': float,
-        #'pulid_ortho': str,
-        #'pulid_editability': int,
-        #'pulid_mode': str,
-        'pulid_timestep_to_start': int,
-    }}
-        
-    return FluxPuLIDPipeline
-
-
-
-# Flux Pipelines
-class FluxPuLIDPipeline(flux_pipeline_creator(FluxPipeline)): pass
-class FluxPuLIDImg2ImgPipeline(flux_pipeline_creator(FluxImg2ImgPipeline)): pass
-class FluxPuLIDInpaintPipeline(flux_pipeline_creator(FluxInpaintPipeline)): pass
-class FluxPuLIDControlNetPipeline(flux_pipeline_creator(FluxControlNetPipeline)): pass
-class FluxPuLIDControlNetImg2ImgPipeline(flux_pipeline_creator(FluxControlNetImg2ImgPipeline)): pass
-class FluxPuLIDControlNetInpaintPipeline(flux_pipeline_creator(FluxControlNetInpaintPipeline)): pass
-class FluxPuLIDControlPipeline(flux_pipeline_creator(FluxControlPipeline)): pass
-class FluxPuLIDControlImg2ImgPipeline(flux_pipeline_creator(FluxControlImg2ImgPipeline)): pass
-class FluxPuLIDPriorReduxPipeline(flux_pipeline_creator(FluxPriorReduxPipeline)): pass
-class FluxPuLIDControlInpaintPipeline(flux_pipeline_creator(FluxControlInpaintPipeline)): pass
-class FluxPuLIDFillPipeline(flux_pipeline_creator(FluxFillPipeline)): pass
-
-
 __all__ = [
     "StableDiffusionXLPuLIDPipeline",
     "StableDiffusionXLPuLIDImg2ImgPipeline",
@@ -331,15 +191,4 @@ __all__ = [
     "StableDiffusionXLPuLIDControlNetPipeline",
     "StableDiffusionXLPuLIDControlNetImg2ImgPipeline",
     "StableDiffusionXLPuLIDControlNetInpaintPipeline",
-    "FluxPuLIDPipeline",
-    "FluxPuLIDImg2ImgPipeline",
-    "FluxPuLIDInpaintPipeline",
-    "FluxPuLIDControlNetPipeline",
-    "FluxPuLIDControlNetImg2ImgPipeline",
-    "FluxPuLIDControlNetInpaintPipeline",
-    "FluxPuLIDControlPipeline",
-    "FluxPuLIDControlImg2ImgPipeline",
-    "FluxPuLIDPriorReduxPipeline",
-    "FluxPuLIDControlInpaintPipeline",
-    "FluxPuLIDFillPipeline"
 ]

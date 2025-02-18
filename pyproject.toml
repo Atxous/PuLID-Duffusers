@@ -1,7 +1,7 @@
 [project]
-name='pulid_pipelines'
+name='pulid_diffusers'
 version='0.1-beta'
-description='Easily integrate PuLID with Hugging Face pipelines for identity customization in image generation'
+description="A library that integrates PuLID with HuggingFace's Diffusers"
 readme = "README.md"
 authors=[
   { name="SmokDev" },

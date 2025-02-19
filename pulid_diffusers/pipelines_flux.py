@@ -44,6 +44,7 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
         @wraps(pipeline_constructor.__call__)
         def __call__(self, *args,
             id_image = None,
+            id_embeds = None,
             id_scale: float = 1,
             #pulid_ortho: str = None,
             #pulid_editability: int = 16,
@@ -56,7 +57,7 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
             user_step_callback = kwargs.pop("callback_on_step_end", None)
             step_callback = None
 
-            if not id_image == None: 
+            if not id_image == None or not id_embeds == None: 
                 if pulid_timestep_to_start > 0:
                     self._set_pulid_avalible(False)
                     def pulid_step_callback(self, step, timestep, callback_kwargs):
@@ -71,11 +72,11 @@ def flux_pipeline_creator(pipeline_constructor: Type[DiffusionPipeline]) -> Type
                 else:
                     self._set_pulid_avalible(True)
                     step_callback = user_step_callback
-
-                id_embedding = self.pulid_encoder(id_image).to(self.dtype)
-                id_embedding = id_embedding[1:2]
+                if not id_image == None:
+                    id_embeds = self.get_id_embeds(id_image).to(self.dtype)
+                id_embeds = id_embeds[1:2]
                 pulid_joint_attention_kwargs = {
-                    'id_embedding': id_embedding,
+                    'id_embedding': id_embeds,
                     'id_scale': id_scale,
                     #'pulid_mode': pulid_mode,
                     #'pulid_num_zero': pulid_editability,

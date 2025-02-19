@@ -148,24 +148,22 @@ class PuLIDFeaturesExtractor():
 
 
 class PuLIDEncoder:
-    def __init__(self, 
-        id_encoder: IDEncoder | IDFormer = None,
-        features_extractor: PuLIDFeaturesExtractor = None,
+    def __init__(self,
         use_id_former: bool = True
     ):
         self.device = "cpu"
-        if id_encoder == None:
-            id_encoder = IDFormer() if use_id_former else IDEncoder()
-        self.id_encoder = id_encoder
-        self.features_extractor = features_extractor if features_extractor is not None else PuLIDFeaturesExtractor()
+        self.id_encoder = IDFormer() if use_id_former else IDEncoder()
+        self.features_extractor = PuLIDFeaturesExtractor()
 
     def to(self, device: str):
         self.device = device
         self.id_encoder.to(device)
         self.features_extractor.to(device)
 
-    def __call__(self, image: Image):
-        face_info_embeds, clip_embeds = self.features_extractor(image)
+    def get_id_features(self, image: Image):
+        return self.features_extractor(image)
+
+    def get_id_embeds(self, face_info_embeds, clip_embeds):
         id_uncond = torch.zeros_like(face_info_embeds)
         id_vit_hidden_uncond = []
         for layer_idx in range(0, len(clip_embeds)):
@@ -174,6 +172,10 @@ class PuLIDEncoder:
         uncond_id_embedding = self.id_encoder(id_uncond, id_vit_hidden_uncond)
         # return id_embedding
         return torch.cat((uncond_id_embedding, id_embedding), dim=0)
+
+    def __call__(self, image: Image):
+        face_info_embeds, clip_embeds = self.features_extractor(image)
+        return self.get_id_embeds()
     
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
         state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
@@ -492,6 +494,11 @@ def pulid_flux_forward(
 class PuLIDPipeline:
     pulid_encoder: PuLIDEncoder = None
     _pulid_timestep_to_start: int = None
+
+    def get_id_embeds(self, image: Image):
+        if hasattr(self, "pulid_encoder"):
+            return self.pulid_encoder(image)
+        else: raise NotImplementedError("PuLID is no loaded")
 
     def load_pulid(self: Type[DiffusionPipeline], 
         weights: str | Dict[str, torch.Tensor],

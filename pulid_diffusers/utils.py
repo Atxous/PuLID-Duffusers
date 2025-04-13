@@ -10,6 +10,15 @@ from torchvision.utils import make_grid
 from transformers import PretrainedConfig
 from typing import Dict
 
+def reshape_tensor(x, heads):
+    bs, length, width = x.shape
+    # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
+    x = x.view(bs, length, heads, -1)
+    # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
+    x = x.transpose(1, 2)
+    # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
+    x = x.reshape(bs, heads, length, -1)
+    return x
 
 def seed_everything(seed):
     os.environ["PL_GLOBAL_SEED"] = str(seed)

@@ -175,7 +175,7 @@ class PuLIDEncoder:
 
     def __call__(self, image: Image):
         face_info_embeds, clip_embeds = self.features_extractor(image)
-        return self.get_id_embeds()
+        return self.get_id_embeds(face_info_embeds, clip_embeds)
     
     def load_weights(self, weights: str | Dict[str, torch.Tensor]):
         state_dict = load_file_weights(weights) if isinstance(weights, str) else weights
